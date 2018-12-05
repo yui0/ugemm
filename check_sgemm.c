@@ -246,6 +246,7 @@ next_arg:;
 	float *c = random_matrix(nIter*M, ldc);
 	float *sc = random_matrix(nIter*M, ldc);
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_cpu);
+	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_c);
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_avx);
 	free_a(sc);
 	free_a(c);

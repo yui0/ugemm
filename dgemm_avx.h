@@ -5,16 +5,12 @@
 #define MR  8
 #define NR  4
 
-//
 //  Local buffers for storing panels from A, B and C
-//
 static double _A[MC*KC] __attribute__ ((aligned (32)));
 static double _B[KC*NC] __attribute__ ((aligned (32)));
 static double _C[MR*NR] __attribute__ ((aligned (32)));
 
-//
 //  Packing complete panels from A (i.e. without padding)
-//
 static void
 pack_MRxk(int k, const double *A, int incRowA, int incColA,
           double *buffer)
@@ -30,9 +26,7 @@ pack_MRxk(int k, const double *A, int incRowA, int incColA,
 	}
 }
 
-//
 //  Packing panels from A with padding if required
-//
 static void
 pack_A(int mc, int kc, const double *A, int incRowA, int incColA,
        double *buffer)
@@ -61,9 +55,7 @@ pack_A(int mc, int kc, const double *A, int incRowA, int incColA,
 	}
 }
 
-//
 //  Packing complete panels from B (i.e. without padding)
-//
 static void
 pack_kxNR(int k, const double *B, int incRowB, int incColB,
           double *buffer)
@@ -79,9 +71,7 @@ pack_kxNR(int k, const double *B, int incRowB, int incColB,
 	}
 }
 
-//
 //  Packing panels from B with padding if required
-//
 static void
 pack_B(int kc, int nc, const double *B, int incRowB, int incColB,
        double *buffer)
@@ -110,9 +100,7 @@ pack_B(int kc, int nc, const double *B, int incRowB, int incColB,
 	}
 }
 
-//
 //  Micro kernel for multiplying panels from A and B.
-//
 static void
 dgemm_micro_kernel(int kc,
                    double _alpha, const double *a, const double *b,
@@ -677,9 +665,7 @@ dgemm_micro_kernel(int kc,
 	}
 }
 
-//
 //  Compute Y += alpha*X
-//
 static void
 dgeaxpy(int           m,
         int           n,
@@ -708,9 +694,7 @@ dgeaxpy(int           m,
 	}
 }
 
-//
 //  Compute X *= alpha
-//
 static void
 dgescal(int     m,
         int     n,
@@ -736,10 +720,8 @@ dgescal(int     m,
 	}
 }
 
-//
 //  Macro Kernel for the multiplication of blocks of A and B.  We assume that
 //  these blocks were previously packed to buffers _A and _B.
-//
 static void
 dgemm_macro_kernel(int     mc,
                    int     nc,
@@ -798,9 +780,7 @@ dgemm_macro_kernel(int     mc,
 	}
 }
 
-//
 //  Compute C <- beta*C + alpha*A*B
-//
 void
 dgemm_nn(int            m,
          int            n,
@@ -861,7 +841,8 @@ dgemm_nn(int            m,
 	}
 }
 
-void dgemm_avx(char	major,
+void dgemm_avx(
+	char		major,
 	char		transA,
 	char		transB,
 	const int	m,
@@ -920,3 +901,10 @@ void dgemm_avx(char	major,
 		}
 	}
 }
+
+#undef MC
+#undef KC
+#undef NC
+
+#undef MR
+#undef NR

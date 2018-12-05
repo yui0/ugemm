@@ -245,6 +245,7 @@ next_arg:;
 	double *c = random_matrix(nIter*M, ldc);
 	double *sc = random_matrix(nIter*M, ldc);
 	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_cpu);
+	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, _dgemm_c);
 //	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_sse);
 	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_avx);
 	free_a(sc);

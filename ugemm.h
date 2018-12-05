@@ -25,6 +25,18 @@
 #include "dgemm_avx.h"
 #include "sgemm_avx256.h"
 
+#define real		double
+#define GEMM(def)	_dgemm##def
+#include "gemm_cpu.h"
+#undef GEMM
+#undef real
+
+#define real		float
+#define GEMM(def)	sgemm##def
+#include "gemm_cpu.h"
+#undef GEMM
+#undef real
+
 void daxpy_avx(int N, double a, double* const restrict x, double* const restrict y, double* restrict z)
 {
 	int i;
@@ -58,7 +70,8 @@ void saxpy_avx(int N, float a, float* const restrict x, float* const restrict y,
 	}
 }
 
-void daxpy_cpu(const int	N,
+void daxpy_cpu(
+	const int	N,
 	const double	alpha,
 	const double	*x,
 	const int	incx,
@@ -69,7 +82,8 @@ void daxpy_cpu(const int	N,
 		y[n * incy] += alpha * x[n * incx];
 	}
 }
-void saxpy_cpu(const int	N,
+void saxpy_cpu(
+	const int	N,
 	const float	alpha,
 	const float	*x,
 	const int	incx,
@@ -81,7 +95,8 @@ void saxpy_cpu(const int	N,
 	}
 }
 
-void dgemv_cpu(char	trans,
+void dgemv_cpu(
+	char		trans,
 	const int	M,
 	const int	N,
 	const double	alpha,
@@ -95,17 +110,15 @@ void dgemv_cpu(char	trans,
 {
 	if (trans == 'N') {
 		for (int m=0; m<M; m++) {
-			double sum = 0.0;
+			register double sum = 0.0;
 			for (int n=0; n<N; n++) {
 				sum += A[m + n * lda] * x[n * incy];
 			}
 			y[m * incy] = alpha * sum + beta * y[m * incy];
 		}
-	}
-
-	if (trans == 'T') {
+	} else /*if (trans == 'T')*/ {
 		for (int m=0; m<M; m++) {
-			double sum = 0.0;
+			register double sum = 0.0;
 			for (int n=0; n<N; n++) {
 				sum += A[n + m * lda] * x[n * incy];
 			}
@@ -113,7 +126,8 @@ void dgemv_cpu(char	trans,
 		}
 	}
 }
-void sgemv_cpu(char	trans,
+void sgemv_cpu(
+	char		trans,
 	const int	M,
 	const int	N,
 	const float	alpha,
@@ -127,17 +141,15 @@ void sgemv_cpu(char	trans,
 {
 	if (trans == 'N') {
 		for (int m=0; m<M; m++) {
-			float sum = 0.0;
+			register float sum = 0.0;
 			for (int n=0; n<N; n++) {
 				sum += A[m + n * lda] * x[n * incy];
 			}
 			y[m * incy] = alpha * sum + beta * y[m * incy];
 		}
-	}
-
-	if (trans == 'T') {
+	} else /*if (trans == 'T')*/ {
 		for (int m=0; m<M; m++) {
-			float sum = 0.0;
+			register float sum = 0.0;
 			for (int n=0; n<N; n++) {
 				sum += A[n + m * lda] * x[n * incy];
 			}
@@ -146,7 +158,8 @@ void sgemv_cpu(char	trans,
 	}
 }
 
-void dgemm_cpu(char	major,
+void dgemm_cpu(
+	char		major,
 	char		transa,
 	char		transb,
 	const int	M,
@@ -166,7 +179,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[k + m * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -179,7 +192,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[m + k * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -192,7 +205,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[k + m * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -205,7 +218,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[m + k * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -214,14 +227,13 @@ void dgemm_cpu(char	major,
 				}
 			}
 		}
-	}
-
+	} else
 	// ColMajor
-	if (major == 'C') {
+	/*if (major == 'C')*/ {
 		if (transa == 'N' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[m + k * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -234,7 +246,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[k + m * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -247,7 +259,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[m + k * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -260,7 +272,7 @@ void dgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					double sum = 0.0;
+					register double sum = 0.0;
 					for (int k=0; k<K; k++) {
 						double tmp = A[k + m * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -271,7 +283,8 @@ void dgemm_cpu(char	major,
 		}
 	}
 }
-void sgemm_cpu(char	major,
+void sgemm_cpu(
+	char		major,
 	char		transa,
 	char		transb,
 	const int	M,
@@ -291,7 +304,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[k + m * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -304,7 +317,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[m + k * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -317,7 +330,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[k + m * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -330,7 +343,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[m + k * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -339,14 +352,13 @@ void sgemm_cpu(char	major,
 				}
 			}
 		}
-	}
-
+	} else
 	// ColMajor
-	if (major == 'C') {
+	/*if (major == 'C')*/ {
 		if (transa == 'N' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[m + k * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -359,7 +371,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'N') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[k + m * lda] * B[k + n * ldb];
 						sum += tmp;
@@ -372,7 +384,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'N' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[m + k * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -385,7 +397,7 @@ void sgemm_cpu(char	major,
 		if (transa == 'T' && transb == 'T') {
 			for (int m=0; m<M; m++) {
 				for (int n=0; n<N; n++) {
-					float sum = 0.0;
+					register float sum = 0.0;
 					for (int k=0; k<K; k++) {
 						float tmp = A[k + m * lda] * B[n + k * ldb];
 						sum += tmp;
@@ -396,3 +408,36 @@ void sgemm_cpu(char	major,
 		}
 	}
 }
+/*void sgemm_cpu(
+	char	major,
+	char		transa,
+	char		transb,
+	int M, int N, int K, 
+	float alpha, 
+	const float *A, int lda, 
+	const float *B, int ldb,
+	float beta, 
+	float *C, int ldc)
+{
+  if (beta != 0) {
+    for (int m = 0; m < M; A += lda, C += ldc, ++m) {
+      for (int n = 0; n < N; ++n) {
+        const float *Bcol = &B[n];
+        double acc = 0;
+        for (int k = 0; k < K; Bcol += ldb, ++k)
+          acc += (double)A[k] * Bcol[0];
+        C[n] = C[n]*beta + acc*alpha;
+      }
+    }
+  } else {
+    for (int m = 0; m < M; A += lda, C += ldc, ++m) {
+      for (int n = 0; n < N; ++n) {
+        const float *Bcol = &B[n];
+        double acc = 0;
+        for (int k = 0; k < K; Bcol += ldb, ++k)
+          acc += (double)A[k] * Bcol[0];
+        C[n] = acc*alpha;
+      }
+    }
+  }
+}*/
