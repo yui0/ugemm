@@ -110,7 +110,7 @@ static void test_dgemm(
 	for (int it=0; it<nIter; ++it) {
 		uint64_t t0 = __rdtsc();
 		uut(
-			'C', 'N', 'N',
+			'R', 'N', 'N',
 			M, N, K,
 			alpha,
 			&A[it*M*lda], lda,
@@ -135,7 +135,7 @@ static void test_dgemm(
 		for (int i=0; i<M*ldc; i++) {
 			refC[i] = srcC[it*M*ldc+i];
 		}
-		dgemm_cpu('C', 'N', 'N',
+		dgemm_cpu('R', 'N', 'N',
 		        M, N, K, alpha, &A[it*M*lda], lda, &B[it*K*ldb], ldb, beta, refC, ldc);
 		cmp_results(M, N, refC, &C[it*M*ldc], ldc);
 	}
@@ -143,12 +143,12 @@ static void test_dgemm(
 
 int main(int argz, char** argv)
 {
-/*	int M = 128;
+	int M = 128;
 	int N = 361;
-	int K = 1152;*/
-	int M = 500;
+	int K = 1152;
+/*	int M = 500;
 	int N = 500;
-	int K = 500;
+	int K = 500;*/
 	double alpha = 1;
 	double beta  = 0;
 	int lda = 0;
