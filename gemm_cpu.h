@@ -6,9 +6,9 @@
 #define NR  4
 
 //  Local buffers for storing panels from A, B and C
-static real GEMM(_A)[MC*KC];
-static real GEMM(_B)[KC*NC];
-static real GEMM(_C)[MR*NR];
+static real GEMM(_A)[MC*KC] /*__attribute__ ((aligned(32)))*/;
+static real GEMM(_B)[KC*NC] /*__attribute__ ((aligned(32)))*/;
+static real GEMM(_C)[MR*NR] /*__attribute__ ((aligned(32)))*/;
 
 //  Packing complete panels from A (i.e. without padding)
 static void GEMM(_pack_MRxk)(int k, const real *A, int incRowA, int incColA, real *buffer)
@@ -93,11 +93,9 @@ static void GEMM(_pack_B)(int kc, int nc, const real *B, int incRowB, int incCol
 }
 
 //  Micro kernel for multiplying panels from A and B.
-static void
-GEMM(_micro_kernel)(int kc,
-                   real alpha, const real *A, const real *B,
-                   real beta,
-                   real *C, int incRowC, int incColC)
+static void GEMM(_micro_kernel)(
+	int kc, real alpha, const real *A, const real *B,
+	real beta, real *C, int incRowC, int incColC)
 {
 	real AB[MR*NR];
 
@@ -150,20 +148,18 @@ GEMM(_micro_kernel)(int kc,
 }
 
 //  Compute Y += alpha*X
-static void
-GEMM(_geaxpy)(
-	int           m,
-        int           n,
-        real        alpha,
-        const real  *X,
-        int           incRowX,
-        int           incColX,
-        real        *Y,
-        int           incRowY,
-        int           incColY)
+static void GEMM(_geaxpy)(
+	int m,
+	int n,
+	real alpha,
+	const real *X,
+	int incRowX,
+	int incColX,
+	real *Y,
+	int incRowY,
+	int incColY)
 {
 	int i, j;
-
 
 	if (alpha!=1.0) {
 		for (j=0; j<n; ++j) {
@@ -181,14 +177,7 @@ GEMM(_geaxpy)(
 }
 
 //  Compute X *= alpha
-static void
-GEMM(_gescal)(
-	int     m,
-        int     n,
-        real  alpha,
-        real  *X,
-        int     incRowX,
-        int     incColX)
+static void GEMM(_gescal)(int m, int n, real alpha, real *X, int incRowX, int incColX)
 {
 	int i, j;
 
@@ -209,8 +198,7 @@ GEMM(_gescal)(
 
 //  Macro Kernel for the multiplication of blocks of A and B.  We assume that
 //  these blocks were previously packed to buffers _A and _B.
-static void
-GEMM(_macro_kernel)(
+static void GEMM(_macro_kernel)(
 	int     mc,
 	int     nc,
 	int     kc,
@@ -247,8 +235,7 @@ GEMM(_macro_kernel)(
 }
 
 //  Compute C <- beta*C + alpha*A*B
-void
-GEMM(_nn_cpu)(
+void GEMM(_nn_cpu)(
 	int m, int n, int k,
 	real alpha,
 	const real *A, int incRowA, int incColA,
@@ -336,21 +323,41 @@ void GEMM(_c)(
 	}
 
 	//  Start the operations
-	if (transB=='N') {
-		if (transA=='N') {
-			// Form  C := alpha*A*B + beta*C
-			GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, 1, ldB, beta, C, 1, ldC);
+	if (major == 'C') {
+		if (transB=='N') {
+			if (transA=='N') {
+				// Form  C := alpha*A*B + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, 1, ldB, beta, C, 1, ldC);
+			} else {
+				// Form  C := alpha*A**T*B + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, 1, ldB, beta, C, 1, ldC);
+			}
 		} else {
-			// Form  C := alpha*A**T*B + beta*C
-			GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, 1, ldB, beta, C, 1, ldC);
+			if (transA=='N') {
+				// Form  C := alpha*A*B**T + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, ldB, 1, beta, C, 1, ldC);
+			} else {
+				// Form  C := alpha*A**T*B**T + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, ldB, 1, beta, C, 1, ldC);
+			}
 		}
 	} else {
-		if (transA=='N') {
-			// Form  C := alpha*A*B**T + beta*C
-			GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, ldB, 1, beta, C, 1, ldC);
+		if (transB=='N') {
+			if (transA=='N') {
+				// Form  C := alpha*A*B + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, ldB, 1, beta, C, ldC, 1);
+			} else {
+				// Form  C := alpha*A**T*B + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, ldB, 1, beta, C, ldC, 1);
+			}
 		} else {
-			// Form  C := alpha*A**T*B**T + beta*C
-			GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, ldB, 1, beta, C, 1, ldC);
+			if (transA=='N') {
+				// Form  C := alpha*A*B**T + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, ldA, 1, B, 1, ldB, beta, C, ldC, 1);
+			} else {
+				// Form  C := alpha*A**T*B**T + beta*C
+				GEMM(_nn_cpu)(m, n, k, alpha, A, 1, ldA, B, 1, ldB, beta, C, ldC, 1);
+			}
 		}
 	}
 }

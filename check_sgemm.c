@@ -127,7 +127,6 @@ static void test_sgemm(
 		a += dt[it];
 	}
 	a /= nIter;
-//	printf(": med %lu. %.3f FLOP/clk\n", dt[nIter/2], M*N*K*2.0/(dt[nIter/2]));
 	printf(": med %.0f. %.3f FLOP/clk\n", a, M*N*K*2.0/a);
 	print_GFLOPS(M*N*K*2.0/a, 1);
 
@@ -144,12 +143,12 @@ static void test_sgemm(
 
 int main(int argz, char** argv)
 {
-//	int M = 128; // RNN
-//	int N = 361; // RNN
-//	int K = 1152;
-	int M = 500;
+	int M = 128; // RNN
+	int N = 361; // RNN
+	int K = 1152;
+/*	int M = 500;
 	int N = 500;
-	int K = 500;
+	int K = 500;*/
 	float alpha = 1;
 	float beta  = 0;
 	int lda = 0;
@@ -239,15 +238,14 @@ next_arg:;
 	printf("Running SGEMM with M=%d, N=%d, K=%d, alpha=%f, lda=%d, ldb=%d, beta=%f, ldc=%d\n",
 	       M, N, K, alpha, lda, ldb, beta, ldc);
 
-
 	const int nIter = 11;
 	float *a = random_matrix(nIter*M, lda);
 	float *b = random_matrix(nIter*K, ldb);
 	float *c = random_matrix(nIter*M, ldc);
 	float *sc = random_matrix(nIter*M, ldc);
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_cpu);
-	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_c);
-	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_avx);
+	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_c);	// C N N
+	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_avx);	// R N N
 	free_a(sc);
 	free_a(c);
 	free_a(b);

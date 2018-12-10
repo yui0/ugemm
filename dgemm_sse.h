@@ -5,16 +5,12 @@
 #define MR  4
 #define NR  4
 
-//
 //  Local buffers for storing panels from A, B and C
-//
 static double _A[MC*KC] __attribute__ ((aligned (16)));
 static double _B[KC*NC] __attribute__ ((aligned (16)));
 static double _C[MR*NR] __attribute__ ((aligned (16)));
 
-//
 //  Packing complete panels from A (i.e. without padding)
-//
 static void pack_MRxk(int k, const double *A, int incRowA, int incColA, double *buffer)
 {
 	int i, j;
@@ -28,12 +24,8 @@ static void pack_MRxk(int k, const double *A, int incRowA, int incColA, double *
 	}
 }
 
-//
 //  Packing panels from A with padding if required
-//
-static void
-pack_A(int mc, int kc, const double *A, int incRowA, int incColA,
-       double *buffer)
+static void pack_A(int mc, int kc, const double *A, int incRowA, int incColA, double *buffer)
 {
 	int mp  = mc / MR;
 	int _mr = mc % MR;
@@ -59,12 +51,8 @@ pack_A(int mc, int kc, const double *A, int incRowA, int incColA,
 	}
 }
 
-//
 //  Packing complete panels from B (i.e. without padding)
-//
-static void
-pack_kxNR(int k, const double *B, int incRowB, int incColB,
-          double *buffer)
+static void pack_kxNR(int k, const double *B, int incRowB, int incColB, double *buffer)
 {
 	int i, j;
 
@@ -77,12 +65,8 @@ pack_kxNR(int k, const double *B, int incRowB, int incColB,
 	}
 }
 
-//
 //  Packing panels from B with padding if required
-//
-static void
-pack_B(int kc, int nc, const double *B, int incRowB, int incColB,
-       double *buffer)
+static void pack_B(int kc, int nc, const double *B, int incRowB, int incColB, double *buffer)
 {
 	int np  = nc / NR;
 	int _nr = nc % NR;
@@ -108,22 +92,18 @@ pack_B(int kc, int nc, const double *B, int incRowB, int incColB,
 	}
 }
 
-//
 //  Micro kernel for multiplying panels from A and B.
-//
-static void
-dgemm_micro_kernel(long kc,
-                   double alpha, const double *A, const double *B,
-                   double beta,
-                   double *C, long incRowC, long incColC)
+static void dgemm_micro_kernel(
+	long kc,
+	double alpha, const double *A, const double *B,
+	double beta,
+	double *C, long incRowC, long incColC)
 {
 	double AB[MR*NR] __attribute__ ((aligned (16)));
 
 	int i, j, l;
 
-//
-//  Compute AB = A*B
-//
+	//  Compute AB = A*B
 	register __m128d ab_00_11, ab_20_31;
 	register __m128d ab_01_10, ab_21_30;
 	register __m128d ab_02_13, ab_22_33;
@@ -211,9 +191,7 @@ dgemm_micro_kernel(long kc,
 	_mm_storel_pd(&AB[2+3*4], ab_23_32);
 	_mm_storeh_pd(&AB[3+3*4], ab_22_33);
 
-//
-//  Update C <- beta*C
-//
+	//  Update C <- beta*C
 	if (beta==0.0) {
 		for (j=0; j<NR; ++j) {
 			for (i=0; i<MR; ++i) {
@@ -228,10 +206,8 @@ dgemm_micro_kernel(long kc,
 		}
 	}
 
-//
-//  Update C <- C + alpha*AB (note: the case alpha==0.0 was already treated in
-//                                  the above layer dgemm_nn)
-//
+	//  Update C <- C + alpha*AB (note: the case alpha==0.0 was already treated in
+	//                                  the above layer dgemm_nn)
 	if (alpha==1.0) {
 		for (j=0; j<NR; ++j) {
 			for (i=0; i<MR; ++i) {
@@ -247,19 +223,17 @@ dgemm_micro_kernel(long kc,
 	}
 }
 
-//
 //  Compute Y += alpha*X
-//
-static void
-dgeaxpy(int           m,
-        int           n,
-        double        alpha,
-        const double  *X,
-        int           incRowX,
-        int           incColX,
-        double        *Y,
-        int           incRowY,
-        int           incColY)
+static void dgeaxpy(
+	int           m,
+	int           n,
+	double        alpha,
+	const double  *X,
+	int           incRowX,
+	int           incColX,
+	double        *Y,
+	int           incRowY,
+	int           incColY)
 {
 	int i, j;
 
@@ -278,16 +252,8 @@ dgeaxpy(int           m,
 	}
 }
 
-//
 //  Compute X *= alpha
-//
-static void
-dgescal(int     m,
-        int     n,
-        double  alpha,
-        double  *X,
-        int     incRowX,
-        int     incColX)
+static void dgescal(int m, int n, double alpha, double *X, int incRowX, int incColX)
 {
 	int i, j;
 
@@ -306,19 +272,17 @@ dgescal(int     m,
 	}
 }
 
-//
 //  Macro Kernel for the multiplication of blocks of A and B.  We assume that
 //  these blocks were previously packed to buffers _A and _B.
-//
-static void
-dgemm_macro_kernel(int     mc,
-                   int     nc,
-                   int     kc,
-                   double  alpha,
-                   double  beta,
-                   double  *C,
-                   int     incRowC,
-                   int     incColC)
+static void dgemm_macro_kernel(
+	int     mc,
+	int     nc,
+	int     kc,
+	double  alpha,
+	double  beta,
+	double  *C,
+	int     incRowC,
+	int     incColC)
 {
 	int mp = (mc+MR-1) / MR;
 	int np = (nc+NR-1) / NR;
@@ -353,12 +317,11 @@ dgemm_macro_kernel(int     mc,
 	}
 }
 
-//
 //  Compute C <- beta*C + alpha*A*B
-//
-void dgemm_nn(int m, int n, int k,
-              double alpha, const double *A, int incRowA, int incColA, const double *B, int incRowB, int incColB,
-              double beta, double *C, int incRowC, int incColC)
+void dgemm_nn(
+	int m, int n, int k, double alpha,
+	const double *A, int incRowA, int incColA, const double *B, int incRowB, int incColB,
+	double beta, double *C, int incRowC, int incColC)
 {
 	int mb = (m+MC-1) / MC;
 	int nb = (n+NC-1) / NC;
@@ -385,26 +348,21 @@ void dgemm_nn(int m, int n, int k,
 			kc    = (l!=kb-1 || _kc==0) ? KC   : _kc;
 			_beta = (l==0) ? beta : 1.0;
 
-			pack_B(kc, nc,
-			       &B[l*KC*incRowB+j*NC*incColB], incRowB, incColB,
-			       _B);
+			pack_B(kc, nc, &B[l*KC*incRowB+j*NC*incColB], incRowB, incColB, _B);
 
 			for (i=0; i<mb; ++i) {
 				mc = (i!=mb-1 || _mc==0) ? MC : _mc;
 
-				pack_A(mc, kc,
-				       &A[i*MC*incRowA+l*KC*incColA], incRowA, incColA,
-				       _A);
+				pack_A(mc, kc, &A[i*MC*incRowA+l*KC*incColA], incRowA, incColA, _A);
 
-				dgemm_macro_kernel(mc, nc, kc, alpha, _beta,
-				                   &C[i*MC*incRowC+j*NC*incColC],
-				                   incRowC, incColC);
+				dgemm_macro_kernel(mc, nc, kc, alpha, _beta, &C[i*MC*incRowC+j*NC*incColC], incRowC, incColC);
 			}
 		}
 	}
 }
 
-void dgemm_sse(char	major,
+void dgemm_sse(
+	char		major,
 	char		transA,
 	char		transB,
 	const int	m,

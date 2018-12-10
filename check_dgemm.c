@@ -143,9 +143,9 @@ static void test_dgemm(
 
 int main(int argz, char** argv)
 {
-//	int M = 128;
-//	int N = 361;
-//	int K = 1152;
+/*	int M = 128;
+	int N = 361;
+	int K = 1152;*/
 	int M = 500;
 	int N = 500;
 	int K = 500;
@@ -219,6 +219,7 @@ int main(int argz, char** argv)
 next_arg:;
 	}
 
+	// Row major
 	if (lda == 0) lda = K;
 	if (ldb == 0) ldb = N;
 	if (ldc == 0) ldc = N;
@@ -234,20 +235,27 @@ next_arg:;
 		fprintf(stderr, "Bad parameter ldc=%d. Should be greater or equal to N=%d\n", ldc, N);
 		return 1;
 	}
+	// Column major
+/*	if (lda == 0) lda = M;
+	if (ldb == 0) ldb = K;
+	if (ldc == 0) ldc = M;*/
 
 	printf("Running SGEMM with M=%d, N=%d, K=%d, alpha=%f, lda=%d, ldb=%d, beta=%f, ldc=%d\n",
 	       M, N, K, alpha, lda, ldb, beta, ldc);
 
-
 	const int nIter = 11;
-	double *a = random_matrix(nIter*M, lda);
+/*	double *a = random_matrix(nIter*M, lda);
 	double *b = random_matrix(nIter*K, ldb);
 	double *c = random_matrix(nIter*M, ldc);
-	double *sc = random_matrix(nIter*M, ldc);
+	double *sc = random_matrix(nIter*M, ldc);*/
+	double *a = random_matrix(nIter*K, lda);
+	double *b = random_matrix(nIter*N, ldb);
+	double *c = random_matrix(nIter*N, ldc);
+	double *sc = random_matrix(nIter*N, ldc);
 	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_cpu);
-	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, _dgemm_c);
-//	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_sse);
-	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_avx);
+	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, _dgemm_c);	// C N N
+//	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_sse);	// C N N
+	test_dgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, dgemm_avx);	// C N N
 	free_a(sc);
 	free_a(c);
 	free_a(b);
