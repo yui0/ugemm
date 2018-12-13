@@ -1,4 +1,4 @@
-// clang -Ofast -o check_sgemm check_sgemm.c -mavx
+// clang -Ofast -o check_sgemm check_sgemm.c -mavx -funroll-loops -finline-functions -ffp-contract=fast -ftree-vectorize
 
 #include "ugemm.h"
 #include <stdio.h>
@@ -246,6 +246,7 @@ next_arg:;
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_cpu);
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_c);	// C N N
 	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_avx);	// R N N
+	test_sgemm(M, N, K, alpha, a, lda, b, ldb, beta, c, ldc, nIter, sc, sgemm_sse);	// R N N
 	free_a(sc);
 	free_a(c);
 	free_a(b);

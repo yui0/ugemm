@@ -23,6 +23,7 @@
 
 //#include "dgemm_sse.h"
 #include "dgemm_avx.h"
+#include "sgemm_sse.h"
 #include "sgemm_avx256.h"
 
 #define real		double
