@@ -2,8 +2,8 @@
 #define KC  384
 #define NC  4096
 
-#define MR  4
-#define NR  4
+#define MR  8
+#define NR  8
 
 //  Local buffers for storing panels from A, B and C
 static float _a[MC*KC] __attribute__ ((aligned (16)));
@@ -92,17 +92,47 @@ static void _pack_B(int kc, int nc, const float *B, int incRowB, int incColB, fl
 	}
 }
 
+#if 0
+void matmul4x4_sse(const float *A, const float *B, float *C)
+{
+	__m128 row1 = _mm_load_ps(&B[0]);
+	__m128 row2 = _mm_load_ps(&B[4]);
+	__m128 row3 = _mm_load_ps(&B[8]);
+	__m128 row4 = _mm_load_ps(&B[12]);
+	for (int i=0; i<4; i++) {
+		__m128 brod1 = _mm_set1_ps(A[4*i + 0]);
+		__m128 brod2 = _mm_set1_ps(A[4*i + 1]);
+		__m128 brod3 = _mm_set1_ps(A[4*i + 2]);
+		__m128 brod4 = _mm_set1_ps(A[4*i + 3]);
+		__m128 row = _mm_add_ps(
+			_mm_add_ps(
+				_mm_mul_ps(brod1, row1),
+				_mm_mul_ps(brod2, row2)),
+			_mm_add_ps(
+				_mm_mul_ps(brod3, row3),
+				_mm_mul_ps(brod4, row4)));
+		_mm_store_ps(&C[4*i], row);
+	}
+}
 void matmul4x4_avx(const float *a, const float *b, float *c)
 {
 	// Perform a 4x4 matrix multiply by a 4x4 matrix 
-	__m256 a0, a1, b0, b1;
-	__m256 c0, c1, c2, c3, c4, c5, c6, c7;
-	__m256 t0, t1, u0, u1;
+	register __m256 a0, a1, b0, b1;
+	register __m256 c0, c1, c2, c3, c4, c5, c6, c7;
+	register __m256 t0, t1, u0, u1;
 
+//#define SIMD_ALIGNED
+#ifdef SIMD_ALIGNED
 	t0 = _mm256_load_ps(a);						// t0 = a00, a01, a02, a03, a10, a11, a12, a13
 	t1 = _mm256_load_ps(a+8);					// t1 = a20, a21, a22, a23, a30, a31, a32, a33
 	u0 = _mm256_load_ps(b);						// u0 = b00, b01, b02, b03, b10, b11, b12, b13
 	u1 = _mm256_load_ps(b+8);					// u1 = b20, b21, b22, b23, b30, b31, b32, b33
+#else
+	t0 = _mm256_loadu_ps(a);					// t0 = a00, a01, a02, a03, a10, a11, a12, a13
+	t1 = _mm256_loadu_ps(a+8);					// t1 = a20, a21, a22, a23, a30, a31, a32, a33
+	u0 = _mm256_loadu_ps(b);					// u0 = b00, b01, b02, b03, b10, b11, b12, b13
+	u1 = _mm256_loadu_ps(b+8);					// u1 = b20, b21, b22, b23, b30, b31, b32, b33
+#endif
 
 	a0 = _mm256_shuffle_ps(t0, t0, _MM_SHUFFLE(0, 0, 0, 0));	// a0 = a00, a00, a00, a00, a10, a10, a10, a10
 	a1 = _mm256_shuffle_ps(t1, t1, _MM_SHUFFLE(0, 0, 0, 0));	// a1 = a20, a20, a20, a20, a30, a30, a30, a30
@@ -134,13 +164,96 @@ void matmul4x4_avx(const float *a, const float *b, float *c)
 	c5 = _mm256_add_ps(c5, c7);					// c5 = c5 + c7 (the other two terms, second two rose)
 
 	// Finally complete addition of all four terms and return the results
+#ifdef SIMD_ALIGNED
 	_mm256_store_ps(c, _mm256_add_ps(c0, c4));			// n0 = a00*b00+a01*b10+a02*b20+a03*b30  a00*b01+a01*b11+a02*b21+a03*b31  a00*b02+a01*b12+a02*b22+a03*b32  a00*b03+a01*b13+a02*b23+a03*b33
 									//      a10*b00+a11*b10+a12*b20+a13*b30  a10*b01+a11*b11+a12*b21+a13*b31  a10*b02+a11*b12+a12*b22+a13*b32  a10*b03+a11*b13+a12*b23+a13*b33
 	_mm256_store_ps(c+8, _mm256_add_ps(c1, c5));			// n1 = a20*b00+a21*b10+a22*b20+a23*b30  a20*b01+a21*b11+a22*b21+a23*b31  a20*b02+a21*b12+a22*b22+a23*b32  a20*b03+a21*b13+a22*b23+a23*b33
 									//      a30*b00+a31*b10+a32*b20+a33*b30  a30*b01+a31*b11+a32*b21+a33*b31  a30*b02+a31*b12+a32*b22+a33*b32  a30*b03+a31*b13+a32*b23+a33*b33
+#else
+	_mm256_storeu_ps(c, _mm256_add_ps(c0, c4));			// n0 = a00*b00+a01*b10+a02*b20+a03*b30  a00*b01+a01*b11+a02*b21+a03*b31  a00*b02+a01*b12+a02*b22+a03*b32  a00*b03+a01*b13+a02*b23+a03*b33
+									//      a10*b00+a11*b10+a12*b20+a13*b30  a10*b01+a11*b11+a12*b21+a13*b31  a10*b02+a11*b12+a12*b22+a13*b32  a10*b03+a11*b13+a12*b23+a13*b33
+	_mm256_storeu_ps(c+8, _mm256_add_ps(c1, c5));			// n1 = a20*b00+a21*b10+a22*b20+a23*b30  a20*b01+a21*b11+a22*b21+a23*b31  a20*b02+a21*b12+a22*b22+a23*b32  a20*b03+a21*b13+a22*b23+a23*b33
+									//      a30*b00+a31*b10+a32*b20+a33*b30  a30*b01+a31*b11+a32*b21+a33*b31  a30*b02+a31*b12+a32*b22+a33*b32  a30*b03+a31*b13+a32*b23+a33*b33
+#endif
 	return;
 }
+#endif
+/*void dot8x8_avx(const float *a, const float *b, float *c)
+{
+	register __m256 a0, b0, b1, b2, b3, b4, b5, b6, b7;
+	register __m256 c0, c1, c2, c3, c4, c5, c6, c7;
+	b0 = _mm256_broadcast_ss(b);
+	b1 = _mm256_broadcast_ss(b+1);
+	b2 = _mm256_broadcast_ss(b+2);
+	b3 = _mm256_broadcast_ss(b+3);
+	b4 = _mm256_broadcast_ss(b+4);
+	b5 = _mm256_broadcast_ss(b+5);
+	b6 = _mm256_broadcast_ss(b+6);
+	b7 = _mm256_broadcast_ss(b+7);
+	a0 = _mm256_loadu_ps(a);
+	c0 = _mm256_loadu_ps(c);
+	c1 = _mm256_loadu_ps(c+8);
+	c2 = _mm256_loadu_ps(c+16);
+	c3 = _mm256_loadu_ps(c+24);
+	c4 = _mm256_loadu_ps(c+32);
+	c5 = _mm256_loadu_ps(c+40);
+	c6 = _mm256_loadu_ps(c+48);
+	c7 = _mm256_loadu_ps(c+56);
+	_mm256_storeu_ps(c, _mm256_add_ps(c0, _mm256_mul_ps(a0, b0)));
+	_mm256_storeu_ps(c+8, _mm256_add_ps(c1, _mm256_mul_ps(a0, b1)));
+	_mm256_storeu_ps(c+16, _mm256_add_ps(c2, _mm256_mul_ps(a0, b2)));
+	_mm256_storeu_ps(c+24, _mm256_add_ps(c3, _mm256_mul_ps(a0, b3)));
+	_mm256_storeu_ps(c+32, _mm256_add_ps(c4, _mm256_mul_ps(a0, b4)));
+	_mm256_storeu_ps(c+40, _mm256_add_ps(c5, _mm256_mul_ps(a0, b5)));
+	_mm256_storeu_ps(c+48, _mm256_add_ps(c6, _mm256_mul_ps(a0, b6)));
+	_mm256_storeu_ps(c+56, _mm256_add_ps(c7, _mm256_mul_ps(a0, b7)));
+}*/
+void dot8x8_avx(const float *a, const float *b, float *c, int kc)
+{
+	register __m256 a0, b0, b1, b2, b3, b4, b5, b6, b7;
+	register __m256 c0, c1, c2, c3, c4, c5, c6, c7;
+	c0 = _mm256_loadu_ps(c);
+	c1 = _mm256_loadu_ps(c+8);
+	c2 = _mm256_loadu_ps(c+16);
+	c3 = _mm256_loadu_ps(c+24);
+	c4 = _mm256_loadu_ps(c+32);
+	c5 = _mm256_loadu_ps(c+40);
+	c6 = _mm256_loadu_ps(c+48);
+	c7 = _mm256_loadu_ps(c+56);
 
+	for (int i=0; i<kc; i++) {
+		b0 = _mm256_broadcast_ss(b);
+		b1 = _mm256_broadcast_ss(b+1);
+		b2 = _mm256_broadcast_ss(b+2);
+		b3 = _mm256_broadcast_ss(b+3);
+		b4 = _mm256_broadcast_ss(b+4);
+		b5 = _mm256_broadcast_ss(b+5);
+		b6 = _mm256_broadcast_ss(b+6);
+		b7 = _mm256_broadcast_ss(b+7);
+		a0 = _mm256_loadu_ps(a);
+
+		c0 = _mm256_add_ps(c0, _mm256_mul_ps(a0, b0));
+		c1 = _mm256_add_ps(c1, _mm256_mul_ps(a0, b1));
+		c2 = _mm256_add_ps(c2, _mm256_mul_ps(a0, b2));
+		c3 = _mm256_add_ps(c3, _mm256_mul_ps(a0, b3));
+		c4 = _mm256_add_ps(c4, _mm256_mul_ps(a0, b4));
+		c5 = _mm256_add_ps(c5, _mm256_mul_ps(a0, b5));
+		c6 = _mm256_add_ps(c6, _mm256_mul_ps(a0, b6));
+		c7 = _mm256_add_ps(c7, _mm256_mul_ps(a0, b7));
+
+		a += 8;
+		b += 8;
+	}
+
+	_mm256_storeu_ps(c, c0);
+	_mm256_storeu_ps(c+8, c1);
+	_mm256_storeu_ps(c+16, c2);
+	_mm256_storeu_ps(c+24, c3);
+	_mm256_storeu_ps(c+32, c4);
+	_mm256_storeu_ps(c+40, c5);
+	_mm256_storeu_ps(c+48, c6);
+	_mm256_storeu_ps(c+56, c7);
+}
 //  Micro kernel for multiplying panels from A and B.
 static void _sgemm_micro_kernel(
 	long kc,
@@ -152,9 +265,13 @@ static void _sgemm_micro_kernel(
 	int i, j;
 
 	//  Compute AB = A*B
-	//memset(AB, 0, MR*NR*sizeof(float));
+	memset(AB, 0, MR*NR*sizeof(float));
+	dot8x8_avx(A, B, AB, kc);
+#if 0
 	for (int l=0; l<kc; ++l) {
-		matmul4x4_avx(A, B, AB);
+//		matmul4x4_sse(A, B, AB);
+//		matmul4x4_avx(A, B, AB);
+		dot8x8_avx(A, B, AB);
 		/*for (j=0; j<NR; ++j) {
 			for (i=0; i<MR; ++i) {
 				AB[i+j*MR] += A[i]*B[j];
@@ -163,6 +280,7 @@ static void _sgemm_micro_kernel(
 		A += MR;
 		B += NR;
 	}
+#endif
 
 	//  Update C <- beta*C
 	if (beta==0.0) {
