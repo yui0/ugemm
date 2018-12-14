@@ -1,4 +1,5 @@
 // clang -Ofast -o check_sgemm check_sgemm.c -mavx -funroll-loops -finline-functions -ffp-contract=fast -ftree-vectorize
+// gcc -Ofast -o check_sgemm check_sgemm.c -mavx -funroll-loops -finline-functions -ffp-contract=fast -ftree-vectorize
 
 #include "ugemm.h"
 #include <stdio.h>
