@@ -1,7 +1,7 @@
 //---------------------------------------------------------
 //	Cat's eye
 //
-//		©2016-2018 Yuichiro Nakada
+//		©2016-2019 Yuichiro Nakada
 //---------------------------------------------------------
 
 #include <stdio.h>
@@ -14,15 +14,16 @@
 #include <CL/cl.h>
 #endif
 
+#define _OCL_(...)	# __VA_ARGS__
 #define _STRGF(x)	# x
 #define OCLSTRINGIFY(x)	_STRGF(x)
 
 #define MAX_PLATFORMS	10
 #define MAX_DEVICES	10
 
-#define OCL_READ	1
-#define OCL_WRITE	2
-#define OCL_WRITE_ONCE	4
+#define OCL_OUTPUT	1
+#define OCL_INPUT	2
+#define OCL_INPUT_ONCE	4
 
 #ifdef _DEBUG
 #define checkOcl(err) __checkOclErrors((err), #err, __FILE__, __LINE__)
@@ -137,6 +138,7 @@ void oclKernel(ocl_t *kernel, int n, char *opt, char *kernel_code)
 		ret = clGetProgramBuildInfo(program, device_id[ocl_device], CL_PROGRAM_BUILD_LOG, 0, NULL, &len);
 		char *buffer = calloc(len, sizeof(char));
 		ret = clGetProgramBuildInfo(program, device_id[ocl_device], CL_PROGRAM_BUILD_LOG, len, buffer, NULL);
+		printf("\n%s", kernel_code);
 		printf("\n%s\n", buffer);
 	}
 	for (int i=0; i<n; i++) {
@@ -168,22 +170,22 @@ void oclKernelArgs(ocl_t *kernel, int n)
 	}
 }
 
-void oclKernelArgsWrite(args_t *args)
+static inline void oclKernelArgsWrite(args_t *args)
 {
 	while (args->size) {
-		if (args->flag & OCL_WRITE) {
+		if (args->flag & OCL_INPUT) {
 			clEnqueueWriteBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
-			if (args->flag & OCL_WRITE_ONCE) args->flag ^= OCL_WRITE;
+			if (args->flag & OCL_INPUT_ONCE) args->flag ^= OCL_INPUT;
 //			printf("clEnqueueWriteBuffer size:%d %x\n", args->size, args->s);
 		}
 		args++;
 	}
 }
 
-void oclKernelArgsRead(args_t *args)
+static inline void oclKernelArgsRead(args_t *args)
 {
 	while (args->size) {
-		if (args->flag & OCL_READ) {
+		if (args->flag & OCL_OUTPUT) {
 			clEnqueueReadBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
 //			printf("clEnqueueReadBuffer size:%d %x\n", args->size, args->s);
 		}
@@ -191,13 +193,13 @@ void oclKernelArgsRead(args_t *args)
 	}
 }
 
-void oclRun(ocl_t *kernel)
+static inline void oclRun(ocl_t *kernel)
 {
 	int n = 0;
 	args_t *args = kernel->a;
 	while (args->size) {
 #ifdef _DEBUG
-		printf("clSetKernelArg:[%d] %d (%x/%d) %x\n", n, sizeof(cl_mem), (void*)args->p, args->size, (void*)args->s);
+		printf("clSetKernelArg:[%d] %lu (%x/%d) %x\n", n, sizeof(cl_mem), (unsigned int)args->p, args->size, (unsigned int)args->s);
 #endif
 		if (args->type>0) checkOcl(clSetKernelArg(kernel->k, n++, sizeof(cl_mem), (void*)&args->p));
 		else checkOcl(clSetKernelArg(kernel->k, n++, args->size, (void*)args->s));

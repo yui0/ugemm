@@ -75,16 +75,13 @@ args_t args[] = {
 	{ 0, sizeof(int), 0, &M, 0 },
 	{ 0, sizeof(int), 0, &N, 0 },
 	{ 0, sizeof(int), 0, &K, 0 },
-	/*{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, A, OCL_WRITE },
-	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, B, OCL_WRITE },
-	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, C, OCL_READ },*/
-	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, A, OCL_READ|OCL_WRITE },
-	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, B, OCL_READ|OCL_WRITE },
-	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, C, OCL_READ|OCL_WRITE },
+	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, A, OCL_INPUT },
+	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, B, OCL_INPUT },
+	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, C, OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
-	{ "gemm1", 0, 2,{/*M*/SIZE,/*N*/SIZE,0,},{TS,TS,0,}, args },
+	{ "gemm1", 0, 2,{/*M*/SIZE,/*N*/SIZE,},{TS,TS,}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
@@ -125,10 +122,12 @@ int main()
 	for (int m=0; m<M; m++) {
 		for (int n=0; n<N; n++) {
 			register float sum = 0.0;
+			// Row Major
 			/*for (int k=0; k<K; k++) {
 				sum += A[k + m * lda] * B[n + k * ldb];
 			}
 			Z[n + m * ldc] = alpha * sum + beta * Z[n + m * ldc];*/
+			// Column Major
 			for (int k=0; k<K; k++) {
 				sum += A[m + k * lda] * B[k + n * ldb];
 			}
@@ -136,8 +135,4 @@ int main()
 		}
 	}
 	cmp_results(M, N, Z, C, ldc);
-	/*for (int i=0; i<SIZE*SIZE; i++) {
-		printf("%f + %f = %f\n", x[i], y[i], z[i]);
-	}
-	printf("\n");*/
 }
