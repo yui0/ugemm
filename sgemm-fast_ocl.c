@@ -583,7 +583,7 @@ args_t args[] = {
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = { // *8/64
-	{ "gemm_fast", 0, 2,{/*M*/SIZE*MDIMC/MWG,/*N*/SIZE*NDIMC/NWG,},{1*MDIMC,1*NDIMC,}, args },
+	{ "gemm_fast", 0, 2,{/*M*/SIZE*MDIMC/MWG,/*N*/SIZE*NDIMC/NWG},{1*MDIMC,1*NDIMC}, args },
 //	{ "gemm_fast", 0, 2,{SIZE,SIZE},{1,1}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
