@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <sys/time.h>
-#include "sgemm_ocl.h"
+#include "ocl.h"
 
 static void cmp_results(int M, int N, const float *ref, const float *res, int ld)
 {
@@ -39,28 +39,71 @@ static void cmp_results(int M, int N, const float *ref, const float *res, int ld
 	);
 }
 
+char kernel_code[] = OCLSTRINGIFY(
+
+kernel void gemm1(const int M, const int N, const int K,
+	const global float* A, const global float* B, global float* C)
+{
+	// Thread identifiers
+	const int globalRow = get_global_id(0); // Row ID of C (0..M)
+	const int globalCol = get_global_id(1); // Col ID of C (0..N)
+
+	// Compute a single element (loop over K)
+	float acc = 0.0f;
+	for (int k=0; k<K; k++) {
+		acc += A[k*M + globalRow] * B[globalCol*K + k];
+	}
+
+	// Store the result
+	C[globalCol*M + globalRow] = acc;
+}
+
+);
+
 // Size of the matrices - K, M, N (squared)
+//#define SIZE 4096
 #define SIZE 1024
+// Threadblock sizes
+//#define TS 32
+#define TS 16
+
+int M = SIZE;
+int N = SIZE;
+int K = SIZE;
+float A[SIZE*SIZE], B[SIZE*SIZE], C[SIZE*SIZE], Z[SIZE*SIZE];
+args_t args[] = {
+	{ 0, sizeof(int), 0, &M, 0 },
+	{ 0, sizeof(int), 0, &N, 0 },
+	{ 0, sizeof(int), 0, &K, 0 },
+	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, A, OCL_INPUT },
+	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, B, OCL_INPUT },
+	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, C, OCL_OUTPUT },
+	{ 0, 0, 0, 0, 0 },
+};
+ocl_t kernel[] = {
+	{ "gemm1", 0, 2,{/*M*/SIZE,/*N*/SIZE},{TS,TS}, args },
+};
+int ksz = sizeof(kernel)/sizeof(kernel[0]);
+
 int main()
 {
-	int M = SIZE;
-	int N = SIZE;
-	int K = SIZE;
-	static float A[SIZE*SIZE], B[SIZE*SIZE], C[SIZE*SIZE], Z[SIZE*SIZE];
-
 	for (int i=0; i<M*K; i++) { A[i] = 3.6*i + i*i + 3.1; }
 	for (int i=0; i<K*N; i++) { B[i] = 1.2*i + 0.01*i*i + 13.9; }
 	for (int i=0; i<M*N; i++) { C[i] = 0.0; }
 	for (int i=0; i<M*N; i++) { Z[i] = 0.0; }
 
-	sgemm_ocl_init(M, N, K);
+	oclSetup(0, 0);
+	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
+	oclKernelArgs(kernel, ksz);
 
 	struct timeval tv;
 	struct timezone dummy;
 	gettimeofday(&tv, &dummy);
 	double starttime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
 
-	sgemm_ocl(M, N, K, A, B, C);
+	oclKernelArgsWrite(args);
+	oclRun(&kernel[0]);
+	oclKernelArgsRead(args);
 
 	gettimeofday(&tv, &dummy);
 	double endtime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
@@ -68,7 +111,8 @@ int main()
 	double gflop = ((long)K * (long)M * (long)N * 2) / (1000*1000*1000);
 	printf(">>> Done: took %.3lf seconds per run, %.1lf GFLOPS\n", runtime, gflop/runtime);
 
-	sgemm_ocl_finish();
+	oclReleaseKernel(kernel, ksz);
+	oclFinish();
 
 	int lda = SIZE;
 	int ldb = SIZE;
@@ -84,13 +128,8 @@ int main()
 			}
 			Z[n + m * ldc] = alpha * sum + beta * Z[n + m * ldc];*/
 			// Column Major
-			/*for (int k=0; k<K; k++) {
-				sum += A[m + k * lda] * B[k + n * ldb];
-			}
-			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/
-			// CNT
 			for (int k=0; k<K; k++) {
-				sum += A[m + k * lda] * B[n + k * ldb];
+				sum += A[m + k * lda] * B[k + n * ldb];
 			}
 			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];
 		}
