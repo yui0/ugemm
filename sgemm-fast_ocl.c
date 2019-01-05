@@ -631,8 +631,13 @@ int main()
 			}
 			Z[n + m * ldc] = alpha * sum + beta * Z[n + m * ldc];*/
 			// Column Major
-			for (int k=0; k<K; k++) {
+			/*for (int k=0; k<K; k++) {
 				sum += A[m + k * lda] * B[k + n * ldb];
+			}
+			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/
+			// CNT
+			for (int k=0; k<K; k++) {
+				sum += A[m + k * lda] * B[n + k * ldb];
 			}
 			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];
 		}
