@@ -5,6 +5,7 @@
 //---------------------------------------------------------
 
 #include <stdio.h>
+#include <string.h>
 
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
@@ -82,7 +83,7 @@ static void __checkOclErrors(const cl_int err, const char* const func, const cha
 		case CL_INVALID_GL_OBJECT:                printf("-- Error at %d:  Invalid OpenGL object\n", line); break;
 		case CL_INVALID_BUFFER_SIZE:              printf("-- Error at %d:  Invalid buffer size\n", line); break;
 		case CL_INVALID_MIP_LEVEL:                printf("-- Error at %d:  Invalid mip-map level\n", line); break;
-		default:                                  printf("-- Error at %d:  Unknown with code %d\n", line, error);
+		default:                                  printf("-- Error at %d:  Unknown with code %d\n", line, err);
 		}
 	}
 }
@@ -227,9 +228,15 @@ static inline void oclKernelArgsWrite(args_t *args)
 {
 	while (args->size) {
 		if (args->flag & OCL_INPUT) {
-			clEnqueueWriteBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
-			if (args->flag & OCL_INPUT_ONCE) args->flag ^= OCL_INPUT;
-//			printf("clEnqueueWriteBuffer size:%d %x\n", args->size, args->s);
+			if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+				void *p = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_WRITE, 0, args->size, 0, NULL, NULL, NULL);
+				memcpy(p, args->s, args->size);
+				clEnqueueUnmapMemObject(command_queue, args->p, p, 0, NULL, NULL);
+			} else {
+				clEnqueueWriteBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
+				if (args->flag & OCL_INPUT_ONCE) args->flag ^= OCL_INPUT;
+//				printf("clEnqueueWriteBuffer size:%d %x\n", args->size, args->s);
+			}
 		}
 		args++;
 	}
@@ -239,8 +246,14 @@ static inline void oclKernelArgsRead(args_t *args)
 {
 	while (args->size) {
 		if (args->flag & OCL_OUTPUT) {
-			clEnqueueReadBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
-//			printf("clEnqueueReadBuffer size:%d %x\n", args->size, args->s);
+			if (args->type & CL_MEM_ALLOC_HOST_PTR) {
+				void *p = clEnqueueMapBuffer(command_queue, args->p, CL_FALSE, CL_MAP_READ, 0, args->size, 0, NULL, NULL, NULL);
+				memcpy(args->s, p, args->size);
+				clEnqueueUnmapMemObject(command_queue, args->p, p, 0, NULL, NULL);
+			} else {
+				clEnqueueReadBuffer(command_queue, args->p, CL_TRUE, 0, args->size, args->s, 0, 0, 0);
+//				printf("clEnqueueReadBuffer size:%d %x\n", args->size, args->s);
+			}
 		}
 		args++;
 	}
