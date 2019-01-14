@@ -25,6 +25,7 @@
 #define OCL_OUTPUT	1
 #define OCL_INPUT	2
 #define OCL_INPUT_ONCE	4
+#define OCL_BUFFER	8
 // deprecated
 #define OCL_READ	1
 #define OCL_WRITE	2

@@ -60,7 +60,8 @@ int main()
 	gettimeofday(&tv, &dummy);
 	double starttime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
 
-	sgemm_ocl(M, N, K, A, B, C);
+	sgemm_ocl('N', 'T', M, N, K, A, B, C);
+//	sgemm_ocl('N', 'N', M, N, K, A, B, C);
 
 	gettimeofday(&tv, &dummy);
 	double endtime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
@@ -84,7 +85,7 @@ int main()
 			}
 			Z[n + m * ldc] = alpha * sum + beta * Z[n + m * ldc];*/
 			// Column Major
-			/*for (int k=0; k<K; k++) {
+/*			for (int k=0; k<K; k++) {
 				sum += A[m + k * lda] * B[k + n * ldb];
 			}
 			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/

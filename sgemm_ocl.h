@@ -1,4 +1,9 @@
-// ©2019 Yuichiro Nakada
+/* public domain Simple, Minimalistic, Fast GEMM library
+ *	©2019 Yuichiro Nakada
+ *
+ * Basic usage:
+ *	gemm('N', 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+ * */
 
 #include "ocl.h"
 
@@ -528,9 +533,43 @@ __kernel void gemm_fast(const int kSizeM, const int kSizeN, const int kSizeK,
 
 // =================================================================================================
 
+#define TRANSPOSEX 16
+#define TRANSPOSEY 16
+
+// Simple transpose kernel for a P * Q matrix
+__kernel void transpose(const int P, const int Q, const __global float* input, __global float* output)
+{
+	// Thread identifiers
+	const int tx = get_local_id(0);
+	const int ty = get_local_id(1);
+	const int ID0 = get_group_id(0)*TRANSPOSEX + tx; // 0..P
+	const int ID1 = get_group_id(1)*TRANSPOSEY + ty; // 0..Q
+
+	// Set-up the local memory for shuffling
+	__local float buffer[TRANSPOSEX][TRANSPOSEY];
+
+	// Swap the x and y coordinates to perform the rotation (coalesced)
+	if (ID0 < P && ID1 < Q) {
+		buffer[ty][tx] = input[ID1*P + ID0];
+	}
+
+	// Synchronise all threads
+	barrier(CLK_LOCAL_MEM_FENCE);
+
+	// We don't have to swap the x and y thread indices here,
+	// because that's already done in the local memory
+	const int newID0 = get_group_id(1)*TRANSPOSEY + tx;
+	const int newID1 = get_group_id(0)*TRANSPOSEX + ty;
+
+	// Store the transposed result (coalesced)
+	if (newID0 < Q && newID1 < P) {
+		output[newID1*Q + newID0] = buffer[tx][ty];
+	}
+}
+
 );
 
-int _M, _N, _K;
+int _M, _N, _K, _P, _Q;
 args_t _args[] = {
 	{ 0, sizeof(int), 0, &_M, 0 },
 	{ 0, sizeof(int), 0, &_N, 0 },
@@ -540,11 +579,20 @@ args_t _args[] = {
 	{ CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
+args_t t_args[] = {
+	{ 0, sizeof(int), 0, &_P, 0 },
+	{ 0, sizeof(int), 0, &_Q, 0 },
+	{ CL_MEM_READ_ONLY,  0, 0, 0, OCL_INPUT },
+	{ /*CL_MEM_WRITE_ONLY*/CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
+	{ 0, 0, 0, 0, 0 },
+};
 ocl_t _kernel[] = {
-	{ "gemm_fast", 0, 2,{MDIMC/MWG,NDIMC/NWG,0},{1*MDIMC,1*NDIMC,0}, _args },
+	{ "gemm_fast", 0, 2,{MDIMC/MWG,NDIMC/NWG,1},{1*MDIMC,1*NDIMC,1}, _args },
+	{ "transpose", 0, 2,{1/*_K*/,1/*_N*/,1},{TRANSPOSEX,TRANSPOSEY,1}, t_args },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 
+#define max(a, b)	((a) > (b) ? (a) : (b))
 void sgemm_ocl_init(int m, int n, int k)
 {
 	_M = m;
@@ -554,11 +602,16 @@ void sgemm_ocl_init(int m, int n, int k)
 	_args[4].size = sizeof(float)*k*n;
 	_args[5].size = sizeof(float)*m*n;
 
+	int size = max(m*k, k*n);
+	size = max(size, m*n) * sizeof(float);
+	t_args[3].s = malloc(size);
+	t_args[2].size = t_args[3].size = size;
+
 	oclSetup(0, 0);
 	oclKernel(_kernel, _ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", sgemm_kcode);
 	oclKernelArgs(_kernel, _ksz);
 }
-static inline void sgemm_ocl(int m, int n, int k, float *a, float *b, float *c)
+static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
 {
 	_M = m;
 	_N = n;
@@ -572,12 +625,29 @@ static inline void sgemm_ocl(int m, int n, int k, float *a, float *b, float *c)
 	_kernel[0].global_size[0] = m*MDIMC/MWG;
 	_kernel[0].global_size[1] = n*NDIMC/NWG;
 
+	if (tb=='N') {
+		_P = k;
+		_Q = n;
+		t_args[2].size = t_args[3].size = _args[4].size;
+		t_args[2].s = _args[4].s;//b
+		t_args[2].p = _args[4].p;
+		_args[4].s = t_args[3].s;
+		_args[4].p = t_args[3].p;
+		_kernel[1].global_size[0] = k;
+		_kernel[1].global_size[1] = n;
+
+		oclKernelArgsWrite(t_args);
+		oclRun(&_kernel[1]);
+		oclKernelArgsRead(t_args);
+	}
+
 	oclKernelArgsWrite(_args);
 	oclRun(&_kernel[0]);
 	oclKernelArgsRead(_args);
 }
 void sgemm_ocl_finish()
 {
+	free(t_args[3].s);
 	oclReleaseKernel(_kernel, _ksz);
 	oclFinish();
 }
