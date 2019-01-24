@@ -448,10 +448,6 @@ __kernel void gemm_fast(__global float* restrict gm, const int8 _info)
   __global realM* restrict agm = (__global realM* restrict)(gm + _info.s3);
   __global realN* restrict bgm = (__global realN* restrict)(gm + _info.s4);
   __global realM* restrict cgm = (__global realM* restrict)(gm + _info.s5);
-/*__kernel void gemm_fast(const int kSizeM, const int kSizeN, const int kSizeK,
-                        const __global realM* restrict agm,
-                        const __global realN* restrict bgm,
-                        __global realM* cgm) {*/
 
   // Combined thread identifier
   #if SA == 1 || SB == 1
@@ -545,8 +541,14 @@ __kernel void gemm_fast(__global float* restrict gm, const int8 _info)
 #define TRANSPOSEY 16
 
 // Simple transpose kernel for a P * Q matrix
-__kernel void transpose(const int P, const int Q, const __global float* input, __global float* output)
+__kernel void transpose(__global float* gm, const int8 _info)
 {
+	const int P = _info.s0;
+	const int Q = _info.s1;
+	__global float* input = (__global float*)(gm + _info.s2);
+	__global float* output = (__global float*)(gm + _info.s3);
+//__kernel void transpose(const int P, const int Q, const __global float* input, __global float* output)
+//{
 	// Thread identifiers
 	const int tx = get_local_id(0);
 	const int ty = get_local_id(1);
@@ -577,59 +579,27 @@ __kernel void transpose(const int P, const int Q, const __global float* input, _
 
 );
 
-int _M, _N, _K, _P, _Q;
-args_t _args[] = { // CNT
-	{ 0, sizeof(int), 0, &_M, 0 },
-	{ 0, sizeof(int), 0, &_N, 0 },
-	{ 0, sizeof(int), 0, &_K, 0 },
-	{ CL_MEM_READ_ONLY,  0, 0, 0, OCL_INPUT },
-	{ CL_MEM_READ_ONLY,  0, 0, 0, OCL_INPUT },
-	{ CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
-	{ 0, 0, 0, 0, 0 },
-};
 float *_mat;
 int _info[8];
-args_t _args__[] = {
+args_t _args[] = {
 	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_BUFFER },
 	{ 0, sizeof(int)*8, 0, _info, 0 },
-//	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_INPUT|OCL_OUTPUT },
-	{ 0, 0, 0, 0, 0 },
-};
-args_t _args_[] = {
-	{ 0, sizeof(int), 0, &_P, 0 },
-	{ 0, sizeof(int), 0, &_Q, 0 },
-	{ CL_MEM_READ_ONLY,  0, 0, 0, OCL_INPUT },
-	{ CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t _kernel[] = {
 	// global: m*MDIMC/MWG, n*NDIMC/NWG
-//	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args },
-	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args__ },
+	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args },
 
 	// global: k, n
-	{ "transpose", 0, 2,{1,1,1},{TRANSPOSEX,TRANSPOSEY,1}, _args_ },
+	{ "transpose", 0, 2,{1,1,1},{TRANSPOSEX,TRANSPOSEY,1}, _args },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 
 #define max(a, b)	((a) > (b) ? (a) : (b))
-void sgemm_ocl_init(int m, int n, int k)
+void sgemm_ocl_init(int size)
 {
-	_M = m;
-	_N = n;
-	_K = k;
-	_args[3].size = sizeof(float)*m*k;
-	_args[4].size = sizeof(float)*k*n;
-	_args[5].size = sizeof(float)*m*n;
-
-	int size = max(m*k, k*n);
-	size = max(size, m*n) * sizeof(float);
-	_args_[3].s = _mat;
-	_args_[2].size = _args_[3].size = size;
-
-	size = 1024*1024*3*sizeof(float);
-	_args__[0].s = _mat = malloc(size);
-	_args__[0].size = size;
+	_args[0].s = _mat = malloc(size);
+	_args[0].size = size;
 
 	oclSetup(0, 0);
 	oclKernel(_kernel, _ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", sgemm_kcode);
@@ -637,55 +607,38 @@ void sgemm_ocl_init(int m, int n, int k)
 }
 static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
 {
-	_info[0] = m;
-	_info[1] = n;
-	_info[2] = k;
-	_info[3] = 0;
-	_info[4] = m*k;
-	_info[5] = m*k + k*n;
+	oclWrite(_args[0].p, 0, sizeof(float)*m*k, a);
+	oclWrite(_args[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
 
-	_M = m;
-	_N = n;
-	_K = k;
-	_args[3].size = sizeof(float)*m*k;
-	_args[3].s = a;
-	_args[4].size = sizeof(float)*k*n;
-	_args[4].s = b;
-	_args[5].size = sizeof(float)*m*n;
-	_args[5].s = c;
-	_kernel[0].global_size[0] = m*MDIMC/MWG;
-	_kernel[0].global_size[1] = n*NDIMC/NWG;
-
+	_info[4] = m*k;		// b
 	if (tb=='N') {
-		_P = k;
-		_Q = n;
-		_args_[2].size = _args_[3].size = _args[4].size;
-		_args_[2].s = _args[4].s;//b
-		_args_[2].p = _args[4].p;
-		_args[4].s = _args_[3].s;
-		_args[4].p = _args_[3].p;
+		_info[0] = k;	// b
+		_info[1] = n;	// tb
+		_info[2] = m*k;	// b
+		_info[3] = m*k +k*n +m*n;
 		_kernel[1].global_size[0] = k;
 		_kernel[1].global_size[1] = n;
 
-		oclKernelArgsWrite(_args_);
+		oclKernelArgsWrite(_args);
 		oclRun(&_kernel[1]);
-		oclKernelArgsRead(_args_);
+		_info[4] = m*k +k*n +m*n;
 	}
 
-//	oclKernelArgsWrite(_args);
-	//memcpy(_mat, a, sizeof(float)*m*k);
-	//memcpy(_mat+m*k, b, sizeof(float)*k*n);
-	//clEnqueueWriteBuffer(command_queue, _args__[0].p, CL_TRUE, 0, sizeof(float)*m*k, a, 0, 0, 0);
-	//clEnqueueWriteBuffer(command_queue, _args__[0].p, CL_TRUE, sizeof(float)*m*k, sizeof(float)*k*n, b, 0, 0, 0);
-	oclWrite(_args__[0].p, 0, sizeof(float)*m*k, a);
-	oclWrite(_args__[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
-	oclKernelArgsWrite(_args__);
+	_info[0] = m;
+	_info[1] = n;
+	_info[2] = k;
+	_info[3] = 0;		// a
+//	_info[4] = m*k;		// b
+	_info[5] = m*k +k*n;	// c
+	_kernel[0].global_size[0] = m*MDIMC/MWG;
+	_kernel[0].global_size[1] = n*NDIMC/NWG;
+
+//	oclWrite(_args[0].p, 0, sizeof(float)*m*k, a);
+//	oclWrite(_args[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
+	oclKernelArgsWrite(_args);
 	oclRun(&_kernel[0]);
-	oclKernelArgsRead(_args__);
-	//memcpy(c, _mat+m*k+k*n, sizeof(float)*m*n);
-	//clEnqueueReadBuffer(command_queue, _args__[0].p, CL_TRUE, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c, 0, 0, 0);
-	oclRead(_args__[0].p, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c);
-//	oclKernelArgsRead(_args);
+	oclKernelArgsRead(_args);
+	oclRead(_args[0].p, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c);
 }
 void sgemm_ocl_finish()
 {
