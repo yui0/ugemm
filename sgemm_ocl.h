@@ -440,10 +440,18 @@ inline void MultiplyAccumulate(realM cpm[NWI][MWI/VWM], realM apm[MWI/VWM], real
 // Main entry of the kernel. This function contains the basic skeleton, the functionality is
 // provided by the inlined functions above.
 __attribute__((reqd_work_group_size(MDIMC, NDIMC, 1)))
-__kernel void gemm_fast(const int kSizeM, const int kSizeN, const int kSizeK,
+__kernel void gemm_fast(__global float* restrict gm, const int8 _info)
+{
+  const int kSizeM = _info.s0;
+  const int kSizeN = _info.s1;
+  const int kSizeK = _info.s2;
+  __global realM* restrict agm = (__global realM* restrict)(gm + _info.s3);
+  __global realN* restrict bgm = (__global realN* restrict)(gm + _info.s4);
+  __global realM* restrict cgm = (__global realM* restrict)(gm + _info.s5);
+/*__kernel void gemm_fast(const int kSizeM, const int kSizeN, const int kSizeK,
                         const __global realM* restrict agm,
                         const __global realN* restrict bgm,
-                        __global realM* cgm) {
+                        __global realM* cgm) {*/
 
   // Combined thread identifier
   #if SA == 1 || SB == 1
@@ -570,7 +578,7 @@ __kernel void transpose(const int P, const int Q, const __global float* input, _
 );
 
 int _M, _N, _K, _P, _Q;
-args_t _args[] = {
+args_t _args[] = { // CNT
 	{ 0, sizeof(int), 0, &_M, 0 },
 	{ 0, sizeof(int), 0, &_N, 0 },
 	{ 0, sizeof(int), 0, &_K, 0 },
@@ -579,16 +587,28 @@ args_t _args[] = {
 	{ CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
-args_t t_args[] = {
+float *_mat;
+int _info[8];
+args_t _args__[] = {
+	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_BUFFER },
+	{ 0, sizeof(int)*8, 0, _info, 0 },
+//	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_INPUT|OCL_OUTPUT },
+	{ 0, 0, 0, 0, 0 },
+};
+args_t _args_[] = {
 	{ 0, sizeof(int), 0, &_P, 0 },
 	{ 0, sizeof(int), 0, &_Q, 0 },
 	{ CL_MEM_READ_ONLY,  0, 0, 0, OCL_INPUT },
-	{ /*CL_MEM_WRITE_ONLY*/CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
+	{ CL_MEM_READ_WRITE, 0, 0, 0, OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t _kernel[] = {
-	{ "gemm_fast", 0, 2,{MDIMC/MWG,NDIMC/NWG,1},{1*MDIMC,1*NDIMC,1}, _args },
-	{ "transpose", 0, 2,{1/*_K*/,1/*_N*/,1},{TRANSPOSEX,TRANSPOSEY,1}, t_args },
+	// global: m*MDIMC/MWG, n*NDIMC/NWG
+//	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args },
+	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args__ },
+
+	// global: k, n
+	{ "transpose", 0, 2,{1,1,1},{TRANSPOSEX,TRANSPOSEY,1}, _args_ },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 
@@ -604,8 +624,12 @@ void sgemm_ocl_init(int m, int n, int k)
 
 	int size = max(m*k, k*n);
 	size = max(size, m*n) * sizeof(float);
-	t_args[3].s = malloc(size);
-	t_args[2].size = t_args[3].size = size;
+	_args_[3].s = _mat;
+	_args_[2].size = _args_[3].size = size;
+
+	size = 1024*1024*3*sizeof(float);
+	_args__[0].s = _mat = malloc(size);
+	_args__[0].size = size;
 
 	oclSetup(0, 0);
 	oclKernel(_kernel, _ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", sgemm_kcode);
@@ -613,6 +637,13 @@ void sgemm_ocl_init(int m, int n, int k)
 }
 static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
 {
+	_info[0] = m;
+	_info[1] = n;
+	_info[2] = k;
+	_info[3] = 0;
+	_info[4] = m*k;
+	_info[5] = m*k + k*n;
+
 	_M = m;
 	_N = n;
 	_K = k;
@@ -628,26 +659,37 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, fl
 	if (tb=='N') {
 		_P = k;
 		_Q = n;
-		t_args[2].size = t_args[3].size = _args[4].size;
-		t_args[2].s = _args[4].s;//b
-		t_args[2].p = _args[4].p;
-		_args[4].s = t_args[3].s;
-		_args[4].p = t_args[3].p;
+		_args_[2].size = _args_[3].size = _args[4].size;
+		_args_[2].s = _args[4].s;//b
+		_args_[2].p = _args[4].p;
+		_args[4].s = _args_[3].s;
+		_args[4].p = _args_[3].p;
 		_kernel[1].global_size[0] = k;
 		_kernel[1].global_size[1] = n;
 
-		oclKernelArgsWrite(t_args);
+		oclKernelArgsWrite(_args_);
 		oclRun(&_kernel[1]);
-		oclKernelArgsRead(t_args);
+		oclKernelArgsRead(_args_);
 	}
 
-	oclKernelArgsWrite(_args);
+//	oclKernelArgsWrite(_args);
+	//memcpy(_mat, a, sizeof(float)*m*k);
+	//memcpy(_mat+m*k, b, sizeof(float)*k*n);
+	//clEnqueueWriteBuffer(command_queue, _args__[0].p, CL_TRUE, 0, sizeof(float)*m*k, a, 0, 0, 0);
+	//clEnqueueWriteBuffer(command_queue, _args__[0].p, CL_TRUE, sizeof(float)*m*k, sizeof(float)*k*n, b, 0, 0, 0);
+	oclWrite(_args__[0].p, 0, sizeof(float)*m*k, a);
+	oclWrite(_args__[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
+	oclKernelArgsWrite(_args__);
 	oclRun(&_kernel[0]);
-	oclKernelArgsRead(_args);
+	oclKernelArgsRead(_args__);
+	//memcpy(c, _mat+m*k+k*n, sizeof(float)*m*n);
+	//clEnqueueReadBuffer(command_queue, _args__[0].p, CL_TRUE, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c, 0, 0, 0);
+	oclRead(_args__[0].p, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c);
+//	oclKernelArgsRead(_args);
 }
 void sgemm_ocl_finish()
 {
-	free(t_args[3].s);
+	free(_mat);
 	oclReleaseKernel(_kernel, _ksz);
 	oclFinish();
 }
