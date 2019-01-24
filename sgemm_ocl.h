@@ -2,7 +2,9 @@
  *	©2019 Yuichiro Nakada
  *
  * Basic usage:
- *	gemm('N', 'N', M, N, K, alpha, A, lda, B, ldb, beta, C, ldc);
+ *	sgemm_ocl_init(max_buffer_size);
+ *	sgemm_ocl('N', 'N', M, N, K, A, B, C);
+ *	sgemm_ocl_finish();
  * */
 
 #include "ocl.h"
@@ -547,8 +549,7 @@ __kernel void transpose(__global float* gm, const int8 _info)
 	const int Q = _info.s1;
 	__global float* input = (__global float*)(gm + _info.s2);
 	__global float* output = (__global float*)(gm + _info.s3);
-//__kernel void transpose(const int P, const int Q, const __global float* input, __global float* output)
-//{
+
 	// Thread identifiers
 	const int tx = get_local_id(0);
 	const int ty = get_local_id(1);
@@ -608,29 +609,30 @@ void sgemm_ocl_init(int size)
 static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
 {
 	int mk = m*k;
+	int kn = k*n;
+	int mn = m*n;
 	int off_a = 0;
 	int off_b = mk;
 
 	oclWrite(_args[0].p, 0, sizeof(float)*mk, a);
-	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*k*n, b);
+	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*kn, b);
 
 	if (ta=='T') {
 		_info[0] = m;	// a
 		_info[1] = k;	// ta
 		_info[2] = 0;	// a
-		_info[3] = off_a = mk +k*n +m*n;
+		_info[3] = off_a = mk +kn +mn;
 		_kernel[1].global_size[0] = m;
 		_kernel[1].global_size[1] = k;
 
 		oclKernelArgsWrite(_args);
 		oclRun(_kernel+1);
-		//_info[3] = mk +k*n +m*n;
 	}
 	if (tb=='N') {
 		_info[0] = k;	// b
 		_info[1] = n;	// tb
 		_info[2] = mk;	// b
-		_info[3] = off_b = mk +k*n +m*n +m*k;
+		_info[3] = off_b = mk +kn +mn +mk;
 		_kernel[1].global_size[0] = k;
 		_kernel[1].global_size[1] = n;
 
@@ -643,14 +645,14 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, fl
 	_info[2] = k;
 	_info[3] = off_a;	// a
 	_info[4] = off_b;	// b
-	_info[5] = mk +k*n;	// c
+	_info[5] = mk +kn;	// c
 	_kernel[0].global_size[0] = m*MDIMC/MWG;
 	_kernel[0].global_size[1] = n*NDIMC/NWG;
 
 	oclKernelArgsWrite(_args);
 	oclRun(_kernel);
-	oclKernelArgsRead(_args);
-	oclRead(_args[0].p, sizeof(float)*(mk+k*n), sizeof(float)*m*n, c);
+//	oclKernelArgsRead(_args);
+	oclRead(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
 }
 void sgemm_ocl_finish()
 {
