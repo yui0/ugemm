@@ -598,7 +598,7 @@ int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 #define max(a, b)	((a) > (b) ? (a) : (b))
 void sgemm_ocl_init(int size)
 {
-	_args[0].s = _mat = malloc(size);
+//	_args[0].s = _mat = malloc(size);
 	_args[0].size = size;
 
 	oclSetup(0, 0);
@@ -607,42 +607,54 @@ void sgemm_ocl_init(int size)
 }
 static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
 {
-	oclWrite(_args[0].p, 0, sizeof(float)*m*k, a);
-	oclWrite(_args[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
+	int mk = m*k;
+	int off_a = 0;
+	int off_b = mk;
 
-	_info[4] = m*k;		// b
+	oclWrite(_args[0].p, 0, sizeof(float)*mk, a);
+	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*k*n, b);
+
+	if (ta=='T') {
+		_info[0] = m;	// a
+		_info[1] = k;	// ta
+		_info[2] = 0;	// a
+		_info[3] = off_a = mk +k*n +m*n;
+		_kernel[1].global_size[0] = m;
+		_kernel[1].global_size[1] = k;
+
+		oclKernelArgsWrite(_args);
+		oclRun(_kernel+1);
+		//_info[3] = mk +k*n +m*n;
+	}
 	if (tb=='N') {
 		_info[0] = k;	// b
 		_info[1] = n;	// tb
-		_info[2] = m*k;	// b
-		_info[3] = m*k +k*n +m*n;
+		_info[2] = mk;	// b
+		_info[3] = off_b = mk +k*n +m*n +m*k;
 		_kernel[1].global_size[0] = k;
 		_kernel[1].global_size[1] = n;
 
 		oclKernelArgsWrite(_args);
-		oclRun(&_kernel[1]);
-		_info[4] = m*k +k*n +m*n;
+		oclRun(_kernel+1);
 	}
 
 	_info[0] = m;
 	_info[1] = n;
 	_info[2] = k;
-	_info[3] = 0;		// a
-//	_info[4] = m*k;		// b
-	_info[5] = m*k +k*n;	// c
+	_info[3] = off_a;	// a
+	_info[4] = off_b;	// b
+	_info[5] = mk +k*n;	// c
 	_kernel[0].global_size[0] = m*MDIMC/MWG;
 	_kernel[0].global_size[1] = n*NDIMC/NWG;
 
-//	oclWrite(_args[0].p, 0, sizeof(float)*m*k, a);
-//	oclWrite(_args[0].p, sizeof(float)*m*k, sizeof(float)*k*n, b);
 	oclKernelArgsWrite(_args);
-	oclRun(&_kernel[0]);
+	oclRun(_kernel);
 	oclKernelArgsRead(_args);
-	oclRead(_args[0].p, sizeof(float)*(m*k+k*n), sizeof(float)*m*n, c);
+	oclRead(_args[0].p, sizeof(float)*(mk+k*n), sizeof(float)*m*n, c);
 }
 void sgemm_ocl_finish()
 {
-	free(_mat);
+//	free(_mat);
 	oclReleaseKernel(_kernel, _ksz);
 	oclFinish();
 }

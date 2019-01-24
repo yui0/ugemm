@@ -53,7 +53,7 @@ int main()
 	for (int i=0; i<M*N; i++) { C[i] = 0.0; }
 	for (int i=0; i<M*N; i++) { Z[i] = 0.0; }
 
-	sgemm_ocl_init(1024*1024*3*sizeof(float));
+	sgemm_ocl_init(1024*1024*5*sizeof(float));
 
 	struct timeval tv;
 	struct timezone dummy;
@@ -61,7 +61,9 @@ int main()
 	double starttime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
 
 //	sgemm_ocl('N', 'T', M, N, K, A, B, C);
-	sgemm_ocl('N', 'N', M, N, K, A, B, C);
+//	sgemm_ocl('N', 'N', M, N, K, A, B, C);
+//	sgemm_ocl('T', 'N', M, N, K, A, B, C);
+	sgemm_ocl('T', 'T', M, N, K, A, B, C);
 
 	gettimeofday(&tv, &dummy);
 	double endtime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
@@ -85,15 +87,25 @@ int main()
 			}
 			Z[n + m * ldc] = alpha * sum + beta * Z[n + m * ldc];*/
 			// Column Major
-			for (int k=0; k<K; k++) {
+/*			for (int k=0; k<K; k++) {
 				sum += A[m + k * lda] * B[k + n * ldb];
 			}
-			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];
+			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/
 			// CNT
 /*			for (int k=0; k<K; k++) {
 				sum += A[m + k * lda] * B[n + k * ldb];
 			}
 			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/
+			// CTN
+/*			for (int k=0; k<K; k++) {
+				sum += A[k + m * lda] * B[k + n * ldb];
+			}
+			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];*/
+			// CTT
+			for (int k=0; k<K; k++) {
+				sum += A[k + m * lda] * B[n + k * ldb];
+			}
+			Z[m + n * ldc] = alpha * sum + beta * Z[m + n * ldc];
 		}
 	}
 	cmp_results(M, N, Z, C, ldc);
