@@ -144,7 +144,7 @@ void Xaxpy(const int n, const real_arg arg_alpha,
 // Faster version of the kernel without offsets and strided accesses.
 // Also assumes that 'n' is dividable by 'VW', 'WGS' and 'WPT'.
 __kernel __attribute__((reqd_work_group_size(WGS, 1, 1)))
-void XaxpyFastest(const int n, const real alpha, const __global realV* restrict xgm, __global realV* ygm)
+void XaxpyFastest(/*const int n, */const real alpha, const __global realV* restrict xgm, __global realV* ygm)
 {
 	\n\x23pragma unroll\n
 	for (int _w=0; _w<WPT; _w++) {
@@ -152,32 +152,33 @@ void XaxpyFastest(const int n, const real alpha, const __global realV* restrict 
 		realV xvalue = xgm[id];
 		realV yvalue = ygm[id];
 		ygm[id] = MultiplyAddVector(yvalue, alpha, xvalue);
+//		ygm[id] = yvalue + alpha * xvalue;
 	}
 }
 
 );
 
 // Size of the matrices
-#define SIZE 1024
-int N = SIZE*SIZE;
-float ALPHA, X[SIZE*SIZE], Y[SIZE*SIZE], Z[SIZE*SIZE];
+#define SIZE 1024*1024
+int N = SIZE;
+float ALPHA, X[SIZE], Y[SIZE], Z[SIZE];
 args_t args[] = {
-	{ 0, sizeof(int), 0, &N, 0 },
+//	{ 0, sizeof(int), 0, &N, 0 },
 	{ 0, sizeof(float), 0, &ALPHA, 0 },
-	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE*SIZE, 0, X, OCL_INPUT },
-	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE*SIZE, 0, Y, OCL_OUTPUT },
+	{ CL_MEM_READ_ONLY,  sizeof(float)*SIZE, 0, X, OCL_INPUT },
+	{ CL_MEM_READ_WRITE, sizeof(float)*SIZE, 0, Y, OCL_INPUT|OCL_OUTPUT },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t kernel[] = {
-	{ "XaxpyFastest", 0, 1,{WGS},{WGS}, args },
+	{ "XaxpyFastest", 0, 1,{SIZE/WPT},{WGS}, args },
 };
 int ksz = sizeof(kernel)/sizeof(kernel[0]);
 
 int main()
 {
 	ALPHA = 0.5;
-	for (int i=0; i<SIZE*SIZE; i++) { X[i] = 3.6*i + i*i + 3.1; }
-	for (int i=0; i<SIZE*SIZE; i++) { Y[i] = Z[i] = 1.2*i + 0.01*i*i + 13.9; }
+	for (int i=0; i<SIZE; i++) { X[i] = 3.6*i + i*i + 3.1; }
+	for (int i=0; i<SIZE; i++) { Y[i] = Z[i] = 1.2*i + 0.01*i*i + 13.9; }
 
 	oclSetup(0, 0);
 	oclKernel(kernel, ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", kernel_code);
@@ -196,14 +197,18 @@ int main()
 	double endtime = (double)tv.tv_sec + 1.0e-6*((double)tv.tv_usec);
 	double runtime = (endtime - starttime) / (double)/*NUM_RUNS*/1;
 //	double gflop = ((long)K * (long)M * (long)N * 2) / (1000*1000*1000);
-	double gflop = (SIZE*SIZE) / (1000*1000*1000);
+	double gflop = (SIZE) / (1000*1000*1000);
 	printf(">>> Done: took %.3lf seconds per run, %.1lf GFLOPS\n", runtime, gflop/runtime);
 
 	oclReleaseKernel(kernel, ksz);
 	oclFinish();
 
-	for (int i=0; i<SIZE*SIZE; i++) {
+	for (int i=0; i<SIZE; i++) {
 		Z[i] += ALPHA * X[i];
 	}
-	cmp_results(SIZE, SIZE, Z, Y, 1);
+	cmp_results(1, SIZE, Z, Y, 1);
+
+	for (int i=0; i<10; i++) {
+		printf("%f %f\n", Y[i], Z[i]);
+	}
 }
