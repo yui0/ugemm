@@ -1,4 +1,4 @@
-// ©2019 Yuichiro Nakada
+// ©2019-2020 Yuichiro Nakada
 // clang -Os sgemm_ocl.c -o sgemm_ocl `pkg-config --libs --cflags OpenCL`
 // clang -Os sgemm_ocl.c -o sgemm_ocl -framework opencl
 // clang -Os sgemm_ocl.c -o sgemm_ocl -L/opt/amdgpu-pro/lib64/ -lOpenCL
@@ -41,8 +41,18 @@ static void cmp_results(int M, int N, const float *ref, const float *res, int ld
 
 // Size of the matrices - K, M, N (squared)
 #define SIZE 1024
-int main()
+int main(int argc, char* argv[])
 {
+	int platform = 0;
+	int device = 0;
+	for (int i=1; i<argc; i++) {
+		if (!strcmp(argv[i], "-p")) {
+			platform = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-d")) {
+			device = atoi(argv[++i]);
+		}
+	}
+
 	int M = SIZE;
 	int N = SIZE;
 	int K = SIZE;
@@ -53,7 +63,7 @@ int main()
 	for (int i=0; i<M*N; i++) { C[i] = 0.0; }
 	for (int i=0; i<M*N; i++) { Z[i] = 0.0; }
 
-	sgemm_ocl_init(1024*1024*5*sizeof(float));
+	sgemm_ocl_init(platform, device, 1024*1024*5*sizeof(float));
 
 	struct timeval tv;
 	struct timezone dummy;

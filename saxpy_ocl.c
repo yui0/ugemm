@@ -152,7 +152,6 @@ void XaxpyFastest(/*const int n, */const real alpha, const __global realV* restr
 		realV xvalue = xgm[id];
 		realV yvalue = ygm[id];
 		ygm[id] = MultiplyAddVector(yvalue, alpha, xvalue);
-//		ygm[id] = yvalue + alpha * xvalue;
 	}
 }
 
