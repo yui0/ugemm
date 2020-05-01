@@ -26,6 +26,7 @@ gpgcheck=0
 
 # dnf install opencl-headers mesa-libOpenCL ocl-icd-devel
 # dnf install rocm-clang-ocl rocm-opencl rocm-opencl-devel rocm-utils
+$ gcc -O3 sgemm_ocl.c -o sgemm_ocl -lOpenCL -lm
 
 $ make
 ```
@@ -33,6 +34,42 @@ $ make
 ## How to use
 
 ```bash
+$ ./sgemm_ocl1
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.032 seconds per run, 62.9 GFLOPS
+0.000e+00/1.235e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.9929586175e+14 vs  -3.9929586175e+14 
+
+$ ./sgemm_ocl2
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.016 seconds per run, 122.3 GFLOPS
+0.000e+00/1.235e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.9929586175e+14 vs  -3.9929586175e+14 
+
+$ ./sgemm_ocl3
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.018 seconds per run, 112.6 GFLOPS
+0.000e+00/1.235e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.9929586175e+14 vs  -3.9929586175e+14 
+
+$ ./sgemm_ocl4
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.015 seconds per run, 131.8 GFLOPS
+0.000e+00/1.235e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.9929586175e+14 vs  -3.9929586175e+14 
+
+$ ./sgemm_ocl6
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.012 seconds per run, 163.9 GFLOPS
+0.000e+00/1.463e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.6711264766e+20 vs  -3.6711264766e+20 
+
+$ ./sgemm-fast_ocl 
+AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 0/1, device 0/2)
+Maximum memory allocation size is 2576980377 bytes
+>>> Done: took 0.012 seconds per run, 162.1 GFLOPS
+0.000e+00/1.463e+20=0.000e+00. 0.000e+00 at [  0,  0]  -3.6711264766e+20 vs  -3.6711264766e+20 
+
 $ FORCE_CPU=1 ./sgemm_ocl
 pthread-Intel(R) Xeon(R) CPU E5-1650 v2 @ 3.50GHz (platform 0/2, device 0/1)
 Maximum memory allocation size is 4294967296 bytes
@@ -42,7 +79,7 @@ Maximum memory allocation size is 4294967296 bytes
 $ ./sgemm_ocl -p 1
 AMD Radeon HD 7800 Series (TAHITI, DRM 3.35.0, 5.4.6-berry, LLVM 9.0.0) (platform 1/2, device 0/2)
 Maximum memory allocation size is 2576980377 bytes
->>> Done: took 0.015 seconds per run, 143.8 GFLOPS
+>>> Done: took 0.015 seconds per run, 146.7 GFLOPS
 0.000e+00/3.849e+21=0.000e+00. 0.000e+00 at [  0,  0]   2.3661284071e+18 vs   2.3661284071e+18 
 
 ```
