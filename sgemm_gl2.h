@@ -9,11 +9,12 @@
 #include "gpgpu_gl4.h"
 
 // https://www.ibiblio.org/e-notes/webgl/gpu/mul/sgemm.htm
+#define TS 32u
 static const char compute_shader_source[] = STRINGIFY(
 
 \n#version 430\n
 
-layout (local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+layout (local_size_x = TS, local_size_y = TS, local_size_z = 1) in;
 layout (std430, binding = 0) readonly buffer ssbA {
   float A[];
 };
@@ -25,24 +26,49 @@ layout (std430, binding = 2) writeonly buffer ssbC {
 };
 uniform int param[16]; // 0:M 1:N 2:K
 
+shared float Asub[TS][TS];  // Local memory to fit a tile of
+shared float Bsub[TS][TS];  // TS*TS elements of A and B
+
 void main() {
     int M = param[0];
     int N = param[1];
     int K = param[2];
 
     // Thread identifiers
-    uint globalRow = gl_GlobalInvocationID.x; // Row ID of C (0..M)
-    uint globalCol = gl_GlobalInvocationID.y; // Col ID of C (0..N)
+    uint row = gl_LocalInvocationID.x; // Local row ID (max: TS)
+    uint col = gl_LocalInvocationID.y; // Local col ID (max: TS)
+    uint globalRow = TS*gl_WorkGroupID.x + row; // Row ID of C (0..M)
+    uint globalCol = TS*gl_WorkGroupID.y + col; // Col ID of C (0..N)
 
     if (M<=globalRow) return;
     if (N<=globalCol) return;
 
-    // Compute a single element (loop over K)
+    // Initialise the accumulation register
     float acc = 0.0;
-    for (uint k=0u; k < K; k++)
-        acc += A[k*M + globalRow] * B[globalCol*K + k];
 
-    // Store the result
+    // Loop over all tiles
+    uint numTiles = K/TS;
+    for (uint t=0u; t < numTiles; t++) {
+
+        // Load one tile of A and B into local memory
+        uint tiledRow = TS*t + row;
+        uint tiledCol = TS*t + col;
+        Asub[col][row] = A[tiledCol*M + globalRow];
+        Bsub[col][row] = B[globalCol*K + tiledRow];
+
+        // Synchronise to make sure the tile is loaded
+        memoryBarrierShared();
+        barrier();
+
+        // Perform the computation for a single tile
+        for (uint k=0u; k < TS; k++) {
+            acc += Asub[k][row] * Bsub[col][k];
+        }
+
+        // Synchronise before loading the next tile
+        barrier();
+    }
+    // Store the final result in C
     C[globalCol*M + globalRow] = acc;
 }
 
@@ -70,13 +96,8 @@ inline void sgemm_gl(char ta, char tb, int m, int n, int k, float *a, float *b, 
 	param[2] = k;
 	coWrite(0, m*k*sizeof(float), a);
 	coWrite(1, k*n*sizeof(float), b);
-//	coWrite(2, m*n*sizeof(float), c);
-	coRun(sgemm_gl_program, m/8+1, n/8+1, 1, param);
-//	coRun(sgemm_gl_program, 1, 1, 1, param);
+	coRun(sgemm_gl_program, m/TS+1, n/TS+1, 1, param);
 	coRead(2, m*n*sizeof(float), c);
-//	for (int i=0; i<100; i++) printf("%f ", c[i]);
-
-//	coRead(0, m*k*sizeof(float), a);
-//	for (int i=0; i<100; i++) printf("%f ", a[i]);
+	//for (int i=0; i<100; i++) printf("%f ", c[i]);
 }
 

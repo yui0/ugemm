@@ -4,7 +4,13 @@
 #include <stdio.h>
 #include <math.h>
 #include <sys/time.h>
-#include "sgemm_gl1.h"
+//#include "sgemm_gl1.h" // 46 GFLOPS
+//#include "sgemm_gl2.h" // 53 GFLOPS
+//#include "sgemm_gl3.h" // 58 GFLOPS (82)
+#include "sgemm_gl44.h" // 69 GFLOPS
+//#include "sgemm_gl48.h" // 68 GFLOPS
+//#include "sgemm_gl5.h" // 65 GFLOPS
+//#include "sgemm_gl7.h" // 15 GFLOPS
 //#include "sgemm_gl.h"
 
 static void cmp_results(int M, int N, const float *ref, const float *res, int ld)
