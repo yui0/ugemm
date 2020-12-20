@@ -44,14 +44,14 @@ void main() {
     int N = param[1];
     int K = param[2];
 
-    if (M<=gl_GlobalInvocationID.x) return;
-    if (N<=gl_GlobalInvocationID.y) return;
-
     // Thread identifiers
     int tidm = int(gl_LocalInvocationID.x);  // Local row ID (max: TSM/WPTM == RTSM)
     int tidn = int(gl_LocalInvocationID.y);  // Local col ID (max: TSN/WPTN == RTSN)
     int offsetM = TSM*int(gl_WorkGroupID.x); // Work-group offset
     int offsetN = TSN*int(gl_WorkGroupID.y); // Work-group offset
+
+    if (M<=offsetM) return;
+    if (N<=offsetN) return;
 
     // Allocate register space
     float Areg;
@@ -125,7 +125,7 @@ void sgemm_gl_init(int s1, int s2, int s3)
 	sgemm_gl_program = coCreateShaderProgram(compute_shader_source);
 
 	int size[] = {s1, s2, s3};
-	coCreateBuffer(sgemm_gl_program, size, 3);
+	coCreateBuffer(size, 3);
 }
 void sgemm_gl_finish()
 {

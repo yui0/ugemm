@@ -51,6 +51,9 @@ void main() {
     uint offsetM = TSM*gl_WorkGroupID.x; // Work-group offset
     uint offsetN = TSN*gl_WorkGroupID.y; // Work-group offset
 
+    if (M<=offsetM) return;
+    if (N<=offsetN) return;
+
     // Allocate register space
     float Areg;
     float Breg[WPTN];
@@ -135,7 +138,7 @@ void sgemm_gl_init(int s1, int s2, int s3)
 	sgemm_gl_program = coCreateShaderProgram(compute_shader_source);
 
 	int size[] = {s1, s2, s3};
-	coCreateBuffer(sgemm_gl_program, size, 3);
+	coCreateBuffer(size, 3);
 }
 void sgemm_gl_finish()
 {
