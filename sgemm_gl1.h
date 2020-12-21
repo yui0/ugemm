@@ -83,9 +83,10 @@ void main() {
 
 	// Store the result
 	//C[globalCol*M + globalRow] = acc;
+	C[globalCol + globalRow*N] = acc; // Row major
 	// Store the result with Leaky ReLU
 //	C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1 + bias[globalRow]; // Row major
-	C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1; // Row major
+	//C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1; // Row major
 }
 
 );
@@ -125,9 +126,10 @@ void main() {
 
 	// Store the result
 	//C[globalCol*M + globalRow] = acc;
+	C[globalCol + globalRow*N] = acc; // Row major
 	// Store the result with Leaky ReLU
 //	C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1 + bias[globalRow]; // Row major
-	C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1; // Row major
+//	C[globalCol + globalRow*N] = max(acc, 0.0) + min(acc, 0.0) * 0.1; // Row major
 }
 
 );
@@ -137,7 +139,8 @@ void sgemm_gl_init(int s1, int s2, int s3)
 {
 	coInit();
 	sgemm_program[0] = coCreateShaderProgram(gemm_cnn);
-	sgemm_program[1] = coCreateShaderProgram(gemm_rnt);
+	sgemm_program[1] = coCreateShaderProgram(gemm_rnn);
+//	sgemm_program[1] = coCreateShaderProgram(gemm_rnt);
 
 	int size[] = {s1, s2, s3};
 	coCreateBuffer(size, 3);
@@ -189,27 +192,27 @@ float workspace[256*256*128*64];
 static inline void gl_convolution_LReLU(float *inputs, int ich, int w, int h, float *weights, int k, int pad, int stride, float *outputs, int ch, float *bias)
 {
 	// im2col(pix, 3, h, w, 4, 4, 2, 2, 1, 1, workspace);
+	im2col(inputs, ich, h, w, k, k, pad, pad, stride, stride, workspace);
 	int hcol = (h + 2 * pad - k) / stride + 1;
 	int wcol = (w + 2 * pad - k) / stride + 1;
-	im2col(inputs, ich, h, w, k, k, pad, pad, stride, stride, workspace);
 
-	// gemm('N', 'T', ch, wcol*hcol, k*k, magic_kernel, workspace, pix);
+	// gemm('N', 'N', ch, wcol*hcol, k*k*ich, magic_kernel, workspace, pix);
 	// https://petewarden.com/2015/04/20/why-gemm-is-at-the-heart-of-deep-learning/
 	int param[16];
 	param[0] = ch;		// M
 	param[1] = wcol*hcol /* *batch */;// N
 	param[2] = k*k*ich;	// K
-	coWrite(0, param[2]*param[1]*sizeof(float), workspace);
-	coWrite(1, param[0]*param[2]*sizeof(float), weights);
-//	coWrite(0, param[2]*param[1]*sizeof(float), weights); // a
-//	coWrite(1, param[0]*param[2]*sizeof(float), workspace); // b
+	coWrite(0, param[0]*param[2]*sizeof(float), weights); // a
+	coWrite(1, param[2]*param[1]*sizeof(float), workspace); // b
 	coRun(sgemm_program[1], param[0]/8+1, param[1]/8+1, 1, param);
-	coRead(2, param[0]*param[1]*sizeof(float), outputs);
+	coRead(2, param[0]*param[1]*sizeof(float), outputs); // c
 
 	float *p = outputs;
 	for (int i=0; i<ch; i++) {
-		for (int n=0; n<param[1]; n++) {
-			*p++ += bias[i];
+		for (int n=0; n<wcol*hcol; n++) {
+			*p += bias[i];
+			*p = *p>0 ? (*p) : (*p)*0.1;
+			p++;
 		}
 	}
 }
