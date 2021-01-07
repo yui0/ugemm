@@ -2,12 +2,6 @@
 
 public domain Simple, Minimalistic, Fast GEMM library
 
-## How to build
-
-```bash
-$ make
-```
-
 ## How to build on macOS
 
 ```bash
@@ -20,7 +14,8 @@ $ make
 # cat /etc/yum.repos.d/rocm.repo 
 [ROCm]
 name=ROCm
-baseurl=http://repo.radeon.com/rocm/yum/2.2/
+#baseurl=http://repo.radeon.com/rocm/yum/2.2/
+baseurl=http://repo.radeon.com/rocm/yum/4.0/
 enabled=1
 gpgcheck=0
 
@@ -30,6 +25,10 @@ $ gcc -O3 sgemm_ocl.c -o sgemm_ocl -lOpenCL -lm
 
 $ make
 ```
+
+- https://github.com/RadeonOpenCompute/ROCm
+- https://www.amd.com/en/support/kb/release-notes/rn-amdgpu-unified-linux-20-10
+- https://linuxreviews.org/Radeon_Open_Compute
 
 ## How to use
 

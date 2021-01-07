@@ -6,7 +6,7 @@
 #include <math.h>
 #include <sys/time.h>
 
-#if 0
+#ifdef CATS_OPENGL
 #include "sgemm_gl1.h" // 46 GFLOPS (69)
 //#include "sgemm_gl2.h" // 58 GFLOPS
 //#include "sgemm_gl3.h" // 63 GFLOPS (82)
@@ -185,18 +185,18 @@ inline void end(int s, int times)
 #define KSIZE 2*/
 /* RNN
 A
-1.00 2.00 
-3.00 4.00 
-5.00 6.00 
+1.00 2.00
+3.00 4.00
+5.00 6.00
 
 B
-1.00 2.00 3.00 
-4.00 5.00 6.00 
+1.00 2.00 3.00
+4.00 5.00 6.00
 
 C := A * B
-9.00 12.00 15.00 
-19.00 26.00 33.00 
-29.00 40.00 51.00 
+9.00 12.00 15.00
+19.00 26.00 33.00
+29.00 40.00 51.00
 */
 
 int main(int argc, char* argv[])
@@ -204,15 +204,23 @@ int main(int argc, char* argv[])
 	const int M = MSIZE;
 	const int N = NSIZE;
 	const int K = KSIZE;
-	static float A[MSIZE*KSIZE], B[KSIZE*NSIZE], C[MSIZE*NSIZE], Z[MSIZE*NSIZE];
 
+	sgemm_init(M*K, K*N, M*N);
+	printf("\n");
+
+#ifdef OPENCL_SVM
+	float *A = _args[0].s;
+	float *B = _args[0].s +MSIZE*KSIZE;
+	float *C = _args[0].s +MSIZE*KSIZE +KSIZE*NSIZE;
+	float *Z = _args[0].s +MSIZE*KSIZE +KSIZE*NSIZE +MSIZE*NSIZE;
+#else
+	static float A[MSIZE*KSIZE], B[KSIZE*NSIZE], C[MSIZE*NSIZE], Z[MSIZE*NSIZE];
+#endif
 	for (int i=0; i<M*K; i++) { A[i] = /*3.6*i + i*i + 3.1*//*2*/i+1; }
 	for (int i=0; i<K*N; i++) { B[i] = /*1.2*i + 0.01*i*i + 13.9*//*4*/i+1; }
 	for (int i=0; i<M*N; i++) { C[i] = 1.0; }
 	for (int i=0; i<M*N; i++) { Z[i] = 1.0; }
 
-	sgemm_init(M*K, K*N, M*N);
-	printf("\n");
 #ifdef PRINT_MAT
 	print_matrix(A, M, K, 'K');
 	print_matrix(B, K, N, 'N');

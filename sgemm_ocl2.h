@@ -10,8 +10,6 @@
 #include "ocl.h"
 
 #define TS 16		// Threadblock sizes
-//#define TS 4		// Threadblock sizes
-//#define TS 2		// Threadblock sizes
 
 char sgemm_kcode[] = OCLSTRINGIFY(
 
@@ -31,8 +29,6 @@ __kernel void gemm_rnn(__global float* restrict gm, const int8 _info, const floa
 	const int globalRow = TS*get_group_id(0) + row; // Row ID of C (0..M)
 	const int globalCol = TS*get_group_id(1) + col; // Col ID of C (0..N)
 
-//	if (globalRow >= M || globalCol >= N) return;
-
 	// Local memory to fit a tile of TS*TS elements of A and B
 	__local float Asub[TS][TS];
 	__local float Bsub[TS][TS];
@@ -48,27 +44,8 @@ __kernel void gemm_rnn(__global float* restrict gm, const int8 _info, const floa
 		const int tiledCol = TS*t + col;
 //		Asub[col][row] = A[tiledCol*M + globalRow]; // Column major
 //		Bsub[col][row] = B[globalCol*K + tiledRow];
-//		Asub[col][row] = (/*t==numTiles-1 &&*/ tiledCol>=K) ? 0 : A[tiledCol + globalRow*K]; // Row major
-//		Bsub[col][row] = (tiledRow>=K) ? 0 : B[globalCol + N*tiledRow];
 		Asub[col][row] = A[tiledCol + globalRow*K]; // Row major
 		Bsub[col][row] = B[globalCol + N*tiledRow];
-//		Asub[col][row] = (tiledCol>=K || globalRow>=M) ? 0 : A[tiledCol + globalRow*K]; // Row major
-//		Bsub[col][row] = (tiledRow>=K || globalCol>=N) ? 0 : B[globalCol + N*tiledRow];
-
-/*		if (tiledCol>=K) Asub[col][row] = 0;
-		else Asub[col][row] = A[tiledCol + globalRow*K]; // Row major
-		if (tiledRow>=K) Bsub[col][row] = 0;
-		else Bsub[col][row] = B[globalCol + N*tiledRow];*/
-
-/*		Asub[row][col] = A[tiledCol + globalRow*K];
-		Bsub[row][col] = B[globalCol + N*tiledRow];
-		if (tiledCol>=K || globalRow>=M) Asub[row][col] = 0;
-		if (tiledRow>=K || globalCol>=N) Bsub[row][col] = 0;*/
-
-/*		if (t==numTiles-1) {
-			printf(" %f ",  Asub[col][row]);
-//			if (col) Asub[col][row] = 0;
-		}*/
 
 		// Synchronise to make sure the tile is loaded
 		barrier(CLK_LOCAL_MEM_FENCE);
@@ -88,10 +65,8 @@ __kernel void gemm_rnn(__global float* restrict gm, const int8 _info, const floa
 		const int tiledRow = TS*t + row;
 		const int tiledCol = TS*t + col;
 		Asub[col][row] = (tiledCol>=K || globalRow>=M) ? 0 : A[tiledCol + globalRow*K]; // Row major
-//		Asub[col][row] = (tiledCol>=K || globalRow>=M) ? 0 : col + row*K;
-//		Asub[3][row] = -3;
 		Bsub[col][row] = (tiledRow>=K || globalCol>=N) ? 0 : B[globalCol + N*tiledRow];
-//		Bsub[col][row] = (tiledRow>=K || globalCol>=N) ? 0 : col + row*K;
+//		Asub[col][row] = (tiledCol>=K || globalRow>=M) ? 0 : col + row*K;
 
 		// Synchronise to make sure the tile is loaded
 		barrier(CLK_LOCAL_MEM_FENCE);
@@ -99,7 +74,6 @@ __kernel void gemm_rnn(__global float* restrict gm, const int8 _info, const floa
 		// Perform the computation for a single tile
 		for (int k=0; k<TS; k++) {
 			acc += Asub[k][row] * Bsub[col][k];
-//			acc += Asub[row][k] * Bsub[k][col];
 		}
 
 		// Synchronise before loading the next tile
@@ -109,10 +83,10 @@ __kernel void gemm_rnn(__global float* restrict gm, const int8 _info, const floa
 
 	// Store the final result in C
 //	C[globalCol*M + globalRow] = acc; // Column major
-	C[globalCol + globalRow*N] = acc; // Row major
-//	C[globalCol + globalRow*N] = Asub[row][col];
+	float z = _param.s1;
+	if (z) z *= C[globalCol + globalRow*N];
+	C[globalCol + globalRow*N] = _param.s0 * acc + z; // Row major
 //	C[globalCol + globalRow*N] = Asub[col][row];
-//	C[globalCol + globalRow*N] = Bsub[col][row];
 }
 
 #define TRANSPOSEX 16
@@ -155,21 +129,26 @@ __kernel void transpose(__global float* gm, const int8 _info, const float4 _para
 
 );
 
+//#define OPENCL_SVM
 int _info[8];
 float _param[4];
 args_t _args[] = {
-	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_BUFFER },
-	{ 0, sizeof(int)*8, 0, _info, 0 },
-	{ 0, sizeof(float)*4, 0, _param, 0 },
+#ifdef OPENCL_SVM
+	{ CL_MEM_READ_WRITE|CL_MEM_SVM_FINE_GRAIN_BUFFER, 0, 0, OCL_SVM },
+#else
+	{ CL_MEM_READ_WRITE, 0, 0, OCL_BUFFER },
+#endif
+	{ 0, sizeof(int)*8, _info },
+	{ 0, sizeof(float)*4, _param },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t _kernel[] = {
 	// global: m*MDIMC/MWG, n*NDIMC/NWG
-	{ "gemm_rnn", 0, 2,{/*M*/1,/*N*/1},{TS,TS}, _args },
+	{ _args, "gemm_rnn", 0, 2,{TS,TS} },
 
 	// global: k, n
-	{ "transpose", 0, 2,{1,1},{TRANSPOSEX,TRANSPOSEY}, _args },
-//	{ "im2col", 0, 1,{1},{16}, _args },
+	{ _args, "transpose", 0, 2,{TRANSPOSEX,TRANSPOSEY} },
+//	{ _args, "im2col", 0, 1,{16} },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 #define KGEMM_RNN	_kernel[0]
@@ -192,9 +171,11 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 	int off_a = 0;
 	int off_b = mk;
 
+#ifndef OPENCL_SVM
 	oclWrite(_args[0].p, 0, sizeof(float)*mk, a);
 	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*kn, b);
 	if (beta!=0) oclWrite(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
+#endif
 
 	if (ta=='T') {
 		_info[0] = m;	// a
@@ -204,7 +185,6 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 		KTRANSPOSE.global_size[0] = ceil_int(m, TRANSPOSEX);
 		KTRANSPOSE.global_size[1] = ceil_int(k, TRANSPOSEY);
 
-		oclKernelArgsWrite(_args);
 		oclRun(&KTRANSPOSE);
 	}
 	if (tb=='T') {
@@ -215,7 +195,6 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 		KTRANSPOSE.global_size[0] = ceil_int(k, TRANSPOSEX);
 		KTRANSPOSE.global_size[1] = ceil_int(n, TRANSPOSEY);
 
-		oclKernelArgsWrite(_args);
 		oclRun(&KTRANSPOSE);
 	}
 
@@ -234,7 +213,9 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha,
 //	printf("M:%zu N:%zu ", KGEMM_RNN.global_size[0], KGEMM_RNN.global_size[1]);
 
 	oclRun(&KGEMM_RNN);
+#ifndef OPENCL_SVM
 	oclRead(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
+#endif
 }
 void sgemm_ocl_finish()
 {
