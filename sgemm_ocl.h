@@ -1,5 +1,5 @@
 /* public domain Simple, Minimalistic, Fast GEMM library
- *	©2019-2020 Yuichiro Nakada
+ *	©2019-2021 Yuichiro Nakada
  *
  * Basic usage:
  *	sgemm_ocl_init(platform, device, max_buffer_size);
@@ -442,7 +442,7 @@ inline void MultiplyAccumulate(realM cpm[NWI][MWI/VWM], realM apm[MWI/VWM], real
 // Main entry of the kernel. This function contains the basic skeleton, the functionality is
 // provided by the inlined functions above.
 __attribute__((reqd_work_group_size(MDIMC, NDIMC, 1)))
-__kernel void gemm_fast(__global float* restrict gm, const int8 _info)
+__kernel void gemm_fast(__global float* restrict gm, const int8 _info, const float4 _param)
 {
   const int kSizeM = _info.s0;
   const int kSizeN = _info.s1;
@@ -543,7 +543,7 @@ __kernel void gemm_fast(__global float* restrict gm, const int8 _info)
 #define TRANSPOSEY 16
 
 // Simple transpose kernel for a P * Q matrix
-__kernel void transpose(__global float* gm, const int8 _info)
+__kernel void transpose(__global float* gm, const int8 _info, const float4 _param)
 {
 	const int P = _info.s0;
 	const int Q = _info.s1;
@@ -580,33 +580,38 @@ __kernel void transpose(__global float* gm, const int8 _info)
 
 );
 
-float *_mat;
+//#define OPENCL_SVM
 int _info[8];
+float _param[4];
 args_t _args[] = {
-	{ CL_MEM_READ_WRITE,  0, 0, 0, OCL_BUFFER },
-	{ 0, sizeof(int)*8, 0, _info, 0 },
+#ifdef OPENCL_SVM
+	{ CL_MEM_READ_WRITE|CL_MEM_SVM_FINE_GRAIN_BUFFER, 0, 0, OCL_SVM },
+#else
+	{ CL_MEM_READ_WRITE, 0, 0, OCL_BUFFER },
+#endif
+	{ 0, sizeof(int)*8, _info },
+	{ 0, sizeof(float)*4, _param },
 	{ 0, 0, 0, 0, 0 },
 };
 ocl_t _kernel[] = {
 	// global: m*MDIMC/MWG, n*NDIMC/NWG
-	{ "gemm_fast", 0, 2,{1,1,1},{MDIMC,NDIMC,1}, _args },
+	{ _args, "gemm_fast", 0, 2,{MDIMC,NDIMC} },
 
 	// global: k, n
-	{ "transpose", 0, 2,{1,1,1},{TRANSPOSEX,TRANSPOSEY,1}, _args },
+	{ _args, "transpose", 0, 2,{TRANSPOSEX,TRANSPOSEY} },
 };
 int _ksz = sizeof(_kernel)/sizeof(_kernel[0]);
 
 #define max(a, b)	((a) > (b) ? (a) : (b))
 void sgemm_ocl_init(int platform, int device, int size)
 {
-//	_args[0].s = _mat = malloc(size);
 	_args[0].size = size;
 
 	oclSetup(platform, device);
 	oclKernel(_kernel, _ksz, "-cl-denorms-are-zero -cl-finite-math-only -cl-fast-relaxed-math -Werror", sgemm_kcode);
 	oclKernelArgs(_kernel, _ksz);
 }
-static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, float *b, float *c)
+static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float alpha, float *a, float *b, float beta, float *c)
 {
 	int mk = m*k;
 	int kn = k*n;
@@ -614,29 +619,30 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, fl
 	int off_a = 0;
 	int off_b = mk;
 
+#ifndef OPENCL_SVM
 	oclWrite(_args[0].p, 0, sizeof(float)*mk, a);
 	oclWrite(_args[0].p, sizeof(float)*mk, sizeof(float)*kn, b);
+	if (beta!=0) oclWrite(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
+#endif
 
 	if (ta=='T') {
 		_info[0] = m;	// a
 		_info[1] = k;	// ta
-		_info[2] = 0;	// a
+		_info[2] = 0;	// input a
 		_info[3] = off_a = mk +kn +mn;
 		_kernel[1].global_size[0] = m;
 		_kernel[1].global_size[1] = k;
 
-		oclKernelArgsWrite(_args);
 		oclRun(_kernel+1);
 	}
-	if (tb=='N') {
+	if (tb=='T') {
 		_info[0] = k;	// b
 		_info[1] = n;	// tb
-		_info[2] = mk;	// b
+		_info[2] = mk;	// input b
 		_info[3] = off_b = mk +kn +mn +mk;
 		_kernel[1].global_size[0] = k;
 		_kernel[1].global_size[1] = n;
 
-		oclKernelArgsWrite(_args);
 		oclRun(_kernel+1);
 	}
 
@@ -649,14 +655,11 @@ static inline void sgemm_ocl(char ta, char tb, int m, int n, int k, float *a, fl
 	_kernel[0].global_size[0] = m*MDIMC/MWG;
 	_kernel[0].global_size[1] = n*NDIMC/NWG;
 
-	oclKernelArgsWrite(_args);
 	oclRun(_kernel);
-//	oclKernelArgsRead(_args);
 	oclRead(_args[0].p, sizeof(float)*(mk+kn), sizeof(float)*mn, c);
 }
 void sgemm_ocl_finish()
 {
-//	free(_mat);
 	oclReleaseKernel(_kernel, _ksz);
 	oclFinish();
 }
